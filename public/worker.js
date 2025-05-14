@@ -2,17 +2,19 @@
 import {
   pipeline,
   env,
-} from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1"
-
-env.allowLocalModels = false
+} from "/transformers@2.17.1.js"
+env.localModelPath = '/models'
+env.allowLocalModels = true
+env.allowRemoteModels = false
 
 var translator
 var task
 var model
 
 const progressCallback = (data) => {
+  console.log(data)
   self.postMessage({
-    status: "downloading",
+    status: 'downloading',
     result: data,
   })
 }
@@ -23,22 +25,23 @@ const updateCallback = (beams) => {
   })
 
   self.postMessage({
-    status: "update",
+    status: 'update',
     result: decodedText,
   })
 }
 
 const resultCallback = (output) => {
   self.postMessage({
-    status: "result",
+    status: 'result',
     result: output,
   })
 }
 
-self.addEventListener("message", async (event) => {
+self.addEventListener('message', async (event) => {
   const message = event.data
+  console.log(message)
 
-  if (message.action == "download") {
+  if (message.action == 'download') {
     task = message.task
     model = message.model
 
@@ -47,11 +50,11 @@ self.addEventListener("message", async (event) => {
     })
 
     self.postMessage({
-      status: "ready",
+      status: 'ready',
       task: task,
       model: model,
     })
-  } else if (message.action == "translate") {
+  } else if (message.action == 'translate') {
     const output = await translator(message.input, {
       // Secret ingredient
       ...message.generation,
