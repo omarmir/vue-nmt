@@ -57,14 +57,6 @@
 import TextTranslate from '@/components/TextTranslate.vue'
 import { useTranslator } from '@/composables/useTranslator'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
-const { cores } = useTranslator()
-// download()
-
-const aiWorker = new Worker('/worker.js', { type: 'module' })
-
-aiWorker.postMessage({
-  action: 'download',
-  task: 'translation',
-  model: 'Xenova/opus-mt-en-fr',
-})
+const { cores, download } = useTranslator()
+download()
 </script>
