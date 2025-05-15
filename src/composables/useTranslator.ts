@@ -80,6 +80,8 @@ export function useTranslator(generationParams?: MarianGeneration) {
           worker.worker.postMessage('dispose')
           worker.status = 'disposed'
           console.log('disposing:', worker.workerId)
+          worker.worker.onmessage = null
+          worker.worker.terminate()
           worker.worker = undefined
         }
       })
