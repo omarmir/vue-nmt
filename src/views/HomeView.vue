@@ -1,6 +1,12 @@
 <template>
   <main>
-    cores: {{ cores }}
+    <div class="pb-4">
+      <div class="text-blue-500 font-bold">
+        <span v-if="!isLoaded">Loading Model...</span>
+        <span v-else>Model Loaded</span>
+      </div>
+      <ProgressBar :loaded :total></ProgressBar>
+    </div>
     <div class="w-full">
       <TabGroup>
         <TabList class="flex space-x-1 rounded-md bg-blue-100 p-1">
@@ -35,7 +41,7 @@
         <TabPanels class="mt-2">
           <TabPanel
             :class="[
-              'rounded-xl bg-white p-3',
+              'rounded-xl bg-white py-3',
               'ring-white/60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
             ]"
           >
@@ -43,7 +49,7 @@
           </TabPanel>
           <TabPanel
             :class="[
-              'rounded-xl bg-white p-3',
+              'rounded-xl bg-white py-3',
               'ring-white/60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
             ]"
           >
@@ -57,6 +63,7 @@
 import TextTranslate from '@/components/TextTranslate.vue'
 import { useTranslator } from '@/composables/useTranslator'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
-const { cores, download } = useTranslator()
+import ProgressBar from '@/components/Inputs/ProgressBar.vue'
+const { download, loaded, total, isLoaded } = useTranslator()
 download()
 </script>

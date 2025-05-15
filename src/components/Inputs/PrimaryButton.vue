@@ -2,7 +2,7 @@
   <button
     :disabled
     :class="theme"
-    class="disabled:cursor-not-allowed focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 text-center"
+    class="disabled:cursor-not-allowed focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 text-center cursor-pointer"
     :type="isSubmit ? 'submit' : 'button'"
   >
     <slot></slot>
