@@ -73,8 +73,8 @@ export function useTranslator(generationParams?: MarianGeneration) {
         if (worker.status === 'free') {
           worker.worker.postMessage('dispose')
           worker.status = 'disposed'
+          console.log('disposing:', worker.workerId)
         }
-        console.log('disposing:', worker.workerId)
       })
     }
   }
