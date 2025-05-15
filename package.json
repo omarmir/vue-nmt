@@ -19,6 +19,7 @@
     "@huggingface/transformers": "^3.5.1",
     "@tailwindcss/vite": "^4.1.6",
     "jszip": "^3.10.1",
+    "nanoid": "^5.1.5",
     "pinia": "^3.0.1",
     "tailwindcss": "^4.1.6",
     "vue": "^3.5.13",

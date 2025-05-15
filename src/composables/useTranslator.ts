@@ -1,6 +1,12 @@
-import type { DownloadStatus, MarianGeneration, ModelStatus } from '@/types/Transformers'
-import { computed, ref } from 'vue'
+import type {
+  DownloadStatus,
+  MarianGeneration,
+  ModelOutput,
+  ModelStatus,
+} from '@/types/Transformers'
+import { computed, ref, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
+import { nanoid } from 'nanoid'
 
 const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
 const { pipeline, env } = await import(transformersURL)
@@ -19,11 +25,60 @@ const ready = 'vue-nmt-ready'
 fileProgressDetails.value.set(ready, { loaded: 0, total: 100 }) // Just to account for the delay
 
 const cores = window.navigator.hardwareConcurrency ?? 1
-// @ts-expect-error This exists - not sure why it thinks it doesn't
-const ram = window.navigator.deviceMemory
 
 export function useTranslator(generationParams?: MarianGeneration) {
+  const maxConcurrentWorkers = Math.max(1, cores - 2)
+  const sentenceQueue: Array<{ text: string; index: number }> = []
+  const activeWorkersPool: Array<{
+    workerId: string
+    worker: Worker
+    status: 'free' | 'working' | 'disposed'
+  }> = []
+  const translatedSentences: Ref<Map<number, string>> = ref(new Map())
+
   const outputText = ref('')
+
+  const processSentenceQueue = () => {
+    console.log(sentenceQueue)
+    if (sentenceQueue.length > 0) {
+      const translating = sentenceQueue[0]
+      sentenceQueue.splice(0, 1)
+
+      const currWorker = activeWorkersPool.findIndex((worker) => worker.status === 'free')
+      activeWorkersPool[currWorker].status = 'working'
+      activeWorkersPool[currWorker].worker.postMessage({
+        task: 'translate',
+        input: translating.text,
+        generation: generationParams ?? {},
+        index: translating.index,
+        workerId: activeWorkersPool[currWorker].workerId,
+      })
+
+      activeWorkersPool[currWorker].worker.onmessage = (event: MessageEvent<ModelOutput>) => {
+        if (event.data.status === 'result') {
+          console.log(event.data)
+          translatedSentences.value.set(event.data.index, event.data.result)
+          const workerId = event.data.workerId
+          const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
+          activeWorkersPool[currWorker].status = 'free'
+          processSentenceQueue()
+        } else if (event.data.status === 'update') {
+          console.log(event.data)
+          const originalText = translatedSentences.value.get(event.data.index) ?? ''
+          translatedSentences.value.set(event.data.index, originalText + event.data.result)
+        }
+      }
+    } else {
+      activeWorkersPool.forEach((worker) => {
+        if (worker.status === 'free') {
+          worker.worker.postMessage('dispose')
+          worker.status = 'disposed'
+        }
+        console.log('disposing:', worker.workerId)
+      })
+    }
+  }
+
   const progressCallback = (data: ModelStatus) => {
     if (data.status === 'initiate') {
       fileProgressDetails.value.set(data.file, { loaded: 0, total: 0 })
@@ -40,28 +95,27 @@ export function useTranslator(generationParams?: MarianGeneration) {
     }
   }
 
-  const worker = new Worker()
-
-  worker.onmessage = (event: MessageEvent) => {
-    const message = event.data
-    console.log(message)
-    if (message.status === 'update') {
-      outputText.value += message.result
-    } else if (message.status === 'result') {
-      outputText.value = message.result
-    }
-  }
-
   const translate = async (input: string) => {
     if (input.trim() === '') {
       outputText.value = ''
       return
     }
-    worker.postMessage({
-      task: 'translate',
-      input: input,
-      generation: generationParams ?? {},
-    })
+
+    const sentences = splitIntoSentences(input.trim())
+    sentenceQueue.push(...sentences.map((s, i) => ({ text: s, index: i })))
+
+    const workersMax = Math.min(maxConcurrentWorkers, sentenceQueue.length)
+
+    for (let i = 0; i < workersMax; i++) {
+      const worker = new Worker()
+      worker.onmessage = (event: MessageEvent<ModelOutput>) => {
+        if (event.data.status === 'ready') {
+          const workerId = nanoid()
+          activeWorkersPool.push({ workerId, worker, status: 'free' })
+          processSentenceQueue()
+        }
+      }
+    }
   }
 
   const total = computed(() =>
@@ -89,15 +143,27 @@ export function useTranslator(generationParams?: MarianGeneration) {
     }
   }
 
+  // Function to split text into sentences (moved here to be accessible by useTranslator)
+  function splitIntoSentences(text: string): string[] {
+    if (!text) {
+      return []
+    }
+    // Split by common sentence-ending punctuation followed by zero or more whitespace characters.
+    // Uses a positive lookbehind (?<=[.!?]) to ensure the punctuation is kept in the resulting segments.
+    const sentences = text.split(/(?<=[.!?])\s*/)
+    // Filter out any empty strings and trim whitespace.
+    return sentences.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0)
+  }
+
   return {
     cores,
     download,
-    ram,
     translate,
     fileProgressDetails,
     loaded,
     total,
     isLoaded,
     outputText,
+    translatedSentences,
   }
 }

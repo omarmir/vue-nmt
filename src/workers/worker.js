@@ -23,6 +23,8 @@ if (env.backends.onnx.wasm) {
  * @property {'translate'} task
  * @property {string} input
  * @property {MarianGeneration} generation
+ * @property {number} index
+ * @property {string} workerId
  */
 
 /**
@@ -34,63 +36,72 @@ if (env.backends.onnx.wasm) {
  * @typedef {TranslateTask | DisposeTask} ModelTask
  */
 
-let translator // <- move this outside so updateCallback can access it
-const translatorPromise = pipeline('translation', 'opus-mt-en-fr')
+// let translator // <- move this outside so updateCallback can access it
+const translator = await pipeline('translation', 'opus-mt-en-fr')
+self.postMessage({
+  status: 'ready', // this will fire everytime its ready
+})
 
-const updateCallback = (text) => {
+const updateCallback = (text, index, workerId) => {
   self.postMessage({
     status: 'update',
+    index,
     result: text,
+    workerId,
   })
 }
 
-const resultCallback = (output) => {
+const resultCallback = (text, index, workerId) => {
   self.postMessage({
     status: 'result',
-    result: output,
+    index,
+    result: text,
+    workerId,
   })
 }
 
-self.addEventListener('message', async (event) => {
-  const message = event.data
+self.addEventListener(
+  'message',
+  /** @param {MessageEvent<ModelTask>} event */ async (event) => {
+    const message = event.data
 
-  if (message.task === 'dispose') {
-    if (translator) translator.dispose()
-    return
-  }
+    if (message.task === 'dispose') {
+      if (translator) translator.dispose()
+      return
+    }
 
-  const inputText = message.input
-  if (typeof inputText !== 'string' || inputText.trim() === '') {
-    self.postMessage({
-      status: 'error',
-      error: 'Invalid input: expected a non-empty string.',
-    })
-    return
-  }
+    const inputText = message.input
+    if (typeof inputText !== 'string' || inputText.trim() === '') {
+      self.postMessage({
+        status: 'error',
+        error: 'Invalid input: expected a non-empty string.',
+      })
+      return
+    }
 
-  translator = await translatorPromise
-
-  const streamer = new TextStreamer(translator.tokenizer, {
-    skip_prompt: true,
-    // Optionally, do something with the text (e.g., write to a textbox)
-    callback_function: updateCallback
-  })
-
-  console.log(message.generation)
-
-  try {
-    const output = await translator(inputText, {
-      ...message.generation,
-      streamer,
+    // translator = await translatorPromise
+    const streamer = new TextStreamer(translator.tokenizer, {
+      skip_prompt: true,
+      // Optionally, do something with the text (e.g., write to a textbox)
+      callback_function: (text) => updateCallback(text, message.index, message.workerId),
     })
 
-    console.log(output)
+    console.log(message.generation)
 
-    resultCallback(output[0].translation_text)
-  } catch (err) {
-    self.postMessage({
-      status: 'error',
-      error: err.message || 'Unknown error during translation',
-    })
-  }
-})
+    try {
+      const output = await translator(inputText, {
+        ...message.generation,
+        streamer,
+      })
+
+      console.log(output)
+
+      resultCallback(output[0].translation_text, message.index, message.workerId)
+    } catch (err) {
+      self.postMessage({
+        status: 'error',
+        error: err.message || 'Unknown error during translation',
+      })
+    }
+  },
+)

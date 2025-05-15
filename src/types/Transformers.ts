@@ -34,7 +34,23 @@ export type ModelTask =
       task: 'translate'
       input: string
       generation: MarianGeneration
+      index: number
     }
   | {
       task: 'dispose'
+    }
+
+export type ModelOutput =
+  | {
+      status: 'update' | 'result'
+      result: 'string'
+      index: number
+      workerId: string
+    }
+  | {
+      status: 'error'
+      error: string
+    }
+  | {
+      status: 'ready'
     }
