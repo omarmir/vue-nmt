@@ -1,7 +1,17 @@
-import type { DownloadStatus, ModelStatus } from '@/types/Transformers'
-import { pipeline, env } from '@huggingface/transformers'
+import type { DownloadStatus, MarianGeneration, ModelStatus } from '@/types/Transformers'
 import { computed, ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
+
+const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
+const { pipeline, env } = await import(transformersURL)
+
+env.localModelPath = '/models'
+env.allowRemoteModels = false
+env.allowLocalModels = true
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.wasmPaths = '/transformers/'
+  env.backends.onnx.wasm.proxy = false
+}
 
 // Variables to track overall download progress
 const fileProgressDetails = ref(new Map<string, DownloadStatus>())
@@ -12,15 +22,7 @@ const cores = window.navigator.hardwareConcurrency ?? 1
 // @ts-expect-error This exists - not sure why it thinks it doesn't
 const ram = window.navigator.deviceMemory
 
-env.localModelPath = '/models'
-env.allowRemoteModels = false
-env.allowLocalModels = true
-if (env.backends.onnx.wasm) {
-  env.backends.onnx.wasm.wasmPaths = '/wasm/'
-  env.backends.onnx.wasm.proxy = false
-}
-
-export function useTranslator() {
+export function useTranslator(generationParams?: MarianGeneration) {
   const outputText = ref('')
   const progressCallback = (data: ModelStatus) => {
     if (data.status === 'initiate') {
@@ -38,10 +40,6 @@ export function useTranslator() {
     }
   }
 
-  // const worker = new Worker(new URL('/worker.js', import.meta.url), {
-  //   type: 'module',
-  // })
-
   const worker = new Worker()
 
   worker.onmessage = (event: MessageEvent) => {
@@ -54,21 +52,14 @@ export function useTranslator() {
     }
   }
 
-  const generation = {
-    max_length: 512,
-    num_beams: 5,
-    early_stopping: true,
-  }
-
   const translate = async (input: string) => {
-    console.log('compose', input)
     if (input.trim() === '') {
       outputText.value = ''
       return
     }
     worker.postMessage({
       input: input,
-      generation: generation,
+      generation: generationParams ?? {},
     })
   }
 

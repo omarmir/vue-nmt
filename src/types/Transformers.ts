@@ -22,3 +22,9 @@ export type DownloadStatus = {
   loaded: number
   total: number
 }
+
+export type MarianGeneration = {
+  max_length: number
+  num_beams: number
+  early_stopping: boolean
+}

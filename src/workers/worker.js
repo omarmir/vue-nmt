@@ -1,16 +1,13 @@
-// import { pipeline, env } from '@huggingface/transformers'
-// import { pipeline, env } from '../assets/wasm/transformers.web.min'
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1'
-
-
+const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
+const { pipeline, env } = await import(transformersURL);
 
 env.localModelPath = '/models'
 env.allowRemoteModels = false
 env.allowLocalModels = true
-// if (env.backends.onnx.wasm) {
-//   env.backends.onnx.wasm.wasmPaths = '/wasm/'
-//   env.backends.onnx.wasm.proxy = false
-// }
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.wasmPaths = '/transformers/'
+  env.backends.onnx.wasm.proxy = false
+}
 
 
 let translatorPromise = pipeline('translation', 'opus-mt-en-fr', {

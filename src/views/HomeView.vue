@@ -64,6 +64,7 @@ import TextTranslate from '@/components/TextTranslate.vue'
 import { useTranslator } from '@/composables/useTranslator'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
 import ProgressBar from '@/components/Inputs/ProgressBar.vue'
+
 const { download, loaded, total, isLoaded } = useTranslator()
 download()
 </script>

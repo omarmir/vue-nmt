@@ -13,9 +13,16 @@
 import PrimaryButton from '@/components/Inputs/PrimaryButton.vue'
 import TextArea from '@/components/Inputs/TextArea.vue'
 import { useTranslator } from '@/composables/useTranslator'
+import type { MarianGeneration } from '@/types/Transformers'
 import { ref } from 'vue'
 
-const { translate } = useTranslator()
+const generation: MarianGeneration = {
+  max_length: 512,
+  num_beams: 5,
+  early_stopping: true,
+}
+
+const { translate } = useTranslator(generation)
 
 const english = ref('')
 
