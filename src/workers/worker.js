@@ -3,11 +3,6 @@ const { pipeline, env } = await import(transformersURL)
 
 // import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@latest';
 
-// import {
-//   pipeline,
-//   env,
-// } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1"
-
 env.localModelPath = '/models'
 env.allowRemoteModels = false
 env.allowLocalModels = true
@@ -80,27 +75,15 @@ self.addEventListener('message', async (event) => {
 
   translator = await translatorPromise
 
+  console.log(message.generation)
+
   try {
-    // const output = await translator(inputText, {
-    //   callback_function: updateCallback,
-    //   ...message.generation,
-    // })
-
     const output = await translator(inputText, {
+      callback_function: updateCallback,
       ...message.generation,
-      callback_function: function (beams) {
-        console.log('update')
-        const decodedText = pipeline.tokenizer.decode(beams[0].output_token_ids, {
-          skip_special_tokens: true,
-        })
-
-        self.postMessage({
-          type: 'update',
-          target: data.elementIdToUpdate,
-          data: decodedText,
-        })
-      },
     })
+
+    console.log(output)
 
     resultCallback(output[0].translation_text)
   } catch (err) {
