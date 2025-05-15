@@ -31,22 +31,27 @@ export function useTranslator(generationParams?: MarianGeneration) {
   const sentenceQueue: Array<{ text: string; index: number }> = []
   const activeWorkersPool: Array<{
     workerId: string
-    worker: Worker
+    worker: Worker | undefined
     status: 'free' | 'working' | 'disposed'
   }> = []
-  const translatedSentences: Ref<Map<number, string>> = ref(new Map())
-
-  const outputText = ref('')
+  const translatedSentences: Ref<Array<string>> = ref([])
+  const isTranslating = ref(false)
 
   const processSentenceQueue = () => {
     console.log(sentenceQueue)
     if (sentenceQueue.length > 0) {
       const translating = sentenceQueue[0]
-      sentenceQueue.splice(0, 1)
 
       const currWorker = activeWorkersPool.findIndex((worker) => worker.status === 'free')
-      activeWorkersPool[currWorker].status = 'working'
-      activeWorkersPool[currWorker].worker.postMessage({
+      const worker = activeWorkersPool[currWorker]
+
+      if (worker.worker === undefined) {
+        return
+      }
+      sentenceQueue.splice(0, 1)
+
+      worker.status = 'working'
+      worker.worker.postMessage({
         task: 'translate',
         input: translating.text,
         generation: generationParams ?? {},
@@ -54,28 +59,31 @@ export function useTranslator(generationParams?: MarianGeneration) {
         workerId: activeWorkersPool[currWorker].workerId,
       })
 
-      activeWorkersPool[currWorker].worker.onmessage = (event: MessageEvent<ModelOutput>) => {
+      worker.worker.onmessage = (event: MessageEvent<ModelOutput>) => {
         if (event.data.status === 'result') {
           console.log(event.data)
-          translatedSentences.value.set(event.data.index, event.data.result)
+          translatedSentences.value[event.data.index] = event.data.result
           const workerId = event.data.workerId
           const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
           activeWorkersPool[currWorker].status = 'free'
           processSentenceQueue()
         } else if (event.data.status === 'update') {
           console.log(event.data)
-          const originalText = translatedSentences.value.get(event.data.index) ?? ''
-          translatedSentences.value.set(event.data.index, originalText + event.data.result)
+          const originalText = translatedSentences.value[event.data.index] ?? ''
+          translatedSentences.value[event.data.index] = originalText + event.data.result
         }
       }
     } else {
       activeWorkersPool.forEach((worker) => {
         if (worker.status === 'free') {
+          if (!worker.worker) return
           worker.worker.postMessage('dispose')
           worker.status = 'disposed'
           console.log('disposing:', worker.workerId)
+          worker.worker = undefined
         }
       })
+      isTranslating.value = false
     }
   }
 
@@ -97,9 +105,10 @@ export function useTranslator(generationParams?: MarianGeneration) {
 
   const translate = async (input: string) => {
     if (input.trim() === '') {
-      outputText.value = ''
       return
     }
+
+    isTranslating.value = true
 
     const sentences = splitIntoSentences(input.trim())
     sentenceQueue.push(...sentences.map((s, i) => ({ text: s, index: i })))
@@ -152,8 +161,13 @@ export function useTranslator(generationParams?: MarianGeneration) {
     // Uses a positive lookbehind (?<=[.!?]) to ensure the punctuation is kept in the resulting segments.
     const sentences = text.split(/(?<=[.!?])\s*/)
     // Filter out any empty strings and trim whitespace.
+    translatedSentences.value = Array.from({ length: sentences.length })
     return sentences.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0)
   }
+
+  const outputText = computed(() => {
+    return translatedSentences.value.join(' ')
+  })
 
   return {
     cores,
@@ -165,5 +179,6 @@ export function useTranslator(generationParams?: MarianGeneration) {
     isLoaded,
     outputText,
     translatedSentences,
+    isTranslating,
   }
 }
