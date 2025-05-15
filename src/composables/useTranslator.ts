@@ -58,6 +58,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
       return
     }
     worker.postMessage({
+      task: 'translate',
       input: input,
       generation: generationParams ?? {},
     })

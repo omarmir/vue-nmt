@@ -9,6 +9,29 @@ if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.proxy = false
 }
 
+/**
+ * @typedef {Object} MarianGeneration
+ * @property {number} max_length
+ * @property {number} num_beams
+ * @property {boolean} early_stopping
+ */
+
+/**
+ * @typedef {Object} TranslateTask
+ * @property {'translate'} task
+ * @property {string} input
+ * @property {MarianGeneration} generation
+ */
+
+/**
+ * @typedef {Object} DisposeTask
+ * @property {'dispose'} task
+ */
+
+/**
+ * @typedef {TranslateTask | DisposeTask} ModelTask
+ */
+
 
 let translatorPromise = pipeline('translation', 'opus-mt-en-fr', {
   device: 'wasm', // or 'wasm'
@@ -32,8 +55,15 @@ const resultCallback = (output) => {
   })
 }
 
-self.addEventListener('message', async (event) => {
+
+self.addEventListener('message', /** @param {MessageEvent<ModelTask>} event */ async (event) => {
   const message = event.data
+
+  if (message.task === 'dispose') {
+    if (translator) translator.dispose()
+    return
+  }
+
   const inputText = message.input
 
   if (typeof inputText !== 'string' || inputText.trim() === '') {

@@ -28,3 +28,13 @@ export type MarianGeneration = {
   num_beams: number
   early_stopping: boolean
 }
+
+export type ModelTask =
+  | {
+      task: 'translate'
+      input: string
+      generation: MarianGeneration
+    }
+  | {
+      task: 'dispose'
+    }
