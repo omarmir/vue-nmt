@@ -1,5 +1,12 @@
 const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
-const { pipeline, env } = await import(transformersURL);
+const { pipeline, env } = await import(transformersURL)
+
+// import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@latest';
+
+// import {
+//   pipeline,
+//   env,
+// } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1"
 
 env.localModelPath = '/models'
 env.allowRemoteModels = false
@@ -32,12 +39,11 @@ if (env.backends.onnx.wasm) {
  * @typedef {TranslateTask | DisposeTask} ModelTask
  */
 
-
-let translatorPromise = pipeline('translation', 'opus-mt-en-fr', {
-  device: 'wasm', // or 'wasm'
-}) // initialize once
+let translator // <- move this outside so updateCallback can access it
+const translatorPromise = pipeline('translation', 'opus-mt-en-fr')
 
 const updateCallback = (beams) => {
+  console.log('update')
   const decodedText = translator.tokenizer.decode(beams[0].output_token_ids, {
     skip_special_tokens: true,
   })
@@ -55,8 +61,7 @@ const resultCallback = (output) => {
   })
 }
 
-
-self.addEventListener('message', /** @param {MessageEvent<ModelTask>} event */ async (event) => {
+self.addEventListener('message', async (event) => {
   const message = event.data
 
   if (message.task === 'dispose') {
@@ -65,7 +70,6 @@ self.addEventListener('message', /** @param {MessageEvent<ModelTask>} event */ a
   }
 
   const inputText = message.input
-
   if (typeof inputText !== 'string' || inputText.trim() === '') {
     self.postMessage({
       status: 'error',
@@ -74,11 +78,28 @@ self.addEventListener('message', /** @param {MessageEvent<ModelTask>} event */ a
     return
   }
 
-  const translator = await translatorPromise
+  translator = await translatorPromise
 
   try {
+    // const output = await translator(inputText, {
+    //   callback_function: updateCallback,
+    //   ...message.generation,
+    // })
+
     const output = await translator(inputText, {
-      callback_function: updateCallback,
+      ...message.generation,
+      callback_function: function (beams) {
+        console.log('update')
+        const decodedText = pipeline.tokenizer.decode(beams[0].output_token_ids, {
+          skip_special_tokens: true,
+        })
+
+        self.postMessage({
+          type: 'update',
+          target: data.elementIdToUpdate,
+          data: decodedText,
+        })
+      },
     })
 
     resultCallback(output[0].translation_text)

@@ -98,5 +98,6 @@ export function useTranslator(generationParams?: MarianGeneration) {
     loaded,
     total,
     isLoaded,
+    outputText,
   }
 }

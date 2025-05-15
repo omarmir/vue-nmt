@@ -4,7 +4,12 @@
       <template #label> English </template>
     </TextArea>
     <PrimaryButton class="w-full" @click="translateText"> Translate </PrimaryButton>
-    <TextArea name="french" placeholder="Your french content will output here" :disabled="true">
+    <TextArea
+      v-model="outputText"
+      name="french"
+      placeholder="Your french content will output here"
+      :disabled="true"
+    >
       <template #label> French </template>
     </TextArea>
   </div>
@@ -22,7 +27,7 @@ const generation: MarianGeneration = {
   early_stopping: true,
 }
 
-const { translate } = useTranslator(generation)
+const { translate, outputText } = useTranslator(generation)
 
 const english = ref('')
 
