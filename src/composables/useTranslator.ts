@@ -46,7 +46,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
     const message = event.data
     console.log(message)
     if (message.status === 'update') {
-      outputText.value = message.result
+      outputText.value += message.result
     } else if (message.status === 'result') {
       outputText.value = message.result
     }

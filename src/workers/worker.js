@@ -1,5 +1,5 @@
 const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
-const { pipeline, env } = await import(transformersURL)
+const { pipeline, env, TextStreamer } = await import(transformersURL)
 
 // import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@latest';
 
@@ -37,15 +37,10 @@ if (env.backends.onnx.wasm) {
 let translator // <- move this outside so updateCallback can access it
 const translatorPromise = pipeline('translation', 'opus-mt-en-fr')
 
-const updateCallback = (beams) => {
-  console.log('update')
-  const decodedText = translator.tokenizer.decode(beams[0].output_token_ids, {
-    skip_special_tokens: true,
-  })
-
+const updateCallback = (text) => {
   self.postMessage({
     status: 'update',
-    result: decodedText,
+    result: text,
   })
 }
 
@@ -75,12 +70,18 @@ self.addEventListener('message', async (event) => {
 
   translator = await translatorPromise
 
+  const streamer = new TextStreamer(translator.tokenizer, {
+    skip_prompt: true,
+    // Optionally, do something with the text (e.g., write to a textbox)
+    callback_function: updateCallback
+  })
+
   console.log(message.generation)
 
   try {
     const output = await translator(inputText, {
-      callback_function: updateCallback,
       ...message.generation,
+      streamer,
     })
 
     console.log(output)
