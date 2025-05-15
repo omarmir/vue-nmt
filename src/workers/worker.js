@@ -1,5 +1,7 @@
 // import { pipeline, env } from '@huggingface/transformers'
-import { pipeline, env } from '../assets/wasm/transformers.web.min'
+// import { pipeline, env } from '../assets/wasm/transformers.web.min'
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1'
+
 
 
 env.localModelPath = '/models'
