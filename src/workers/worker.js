@@ -37,7 +37,13 @@ if (env.backends.onnx.wasm) {
  */
 
 // let translator // <- move this outside so updateCallback can access it
-const translator = await pipeline('translation', 'opus-mt-en-fr')
+const translator = await pipeline('translation', 'opus-mt-en-fr', {
+  progress_callback: (data) => self.postMessage({
+    status: "downloading",
+    result: data,
+  }),
+})
+
 self.postMessage({
   status: 'ready', // this will fire everytime its ready
 })

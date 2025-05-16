@@ -1,22 +1,25 @@
-export type ModelStatus =
-  | {
-      status: 'initiate' | 'download' | 'done'
-      name: string
-      file: string
-    }
-  | {
-      file: string
-      loaded: number
-      name: string
-      progress: number
-      status: 'progress'
-      total: number
-    }
-  | {
-      status: 'ready'
-      task: string
-      model: string
-    }
+export type ModelStatus = {
+  status: 'downloading'
+  result:
+    | {
+        status: 'initiate' | 'download' | 'done'
+        name: string
+        file: string
+      }
+    | {
+        file: string
+        loaded: number
+        name: string
+        progress: number
+        status: 'progress'
+        total: number
+      }
+    | {
+        status: 'ready'
+        task: string
+        model: string
+      }
+}
 
 export type DownloadStatus = {
   loaded: number
