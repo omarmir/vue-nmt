@@ -13,6 +13,11 @@ import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
 const fileProgressDetails = ref(new Map<string, DownloadStatus>())
 const ready = 'vue-nmt-ready'
 fileProgressDetails.value.set(ready, { loaded: 0, total: 100 }) // Just to account for the delay
+const activeWorkersPool: Array<{
+  workerId: string
+  worker: Worker | undefined
+  status: 'free' | 'working' | 'disposed'
+}> = []
 
 const cores = window.navigator.hardwareConcurrency ?? 1
 
@@ -20,11 +25,6 @@ export function useTranslator(generationParams?: MarianGeneration) {
   const smartTextSplitter = new SmartTextSplitter()
   const maxConcurrentWorkers = Math.max(1, cores - 2)
   const sentenceQueue: SentenceEntry[] = []
-  const activeWorkersPool: Array<{
-    workerId: string
-    worker: Worker | undefined
-    status: 'free' | 'working' | 'disposed'
-  }> = []
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
 
@@ -99,23 +99,27 @@ export function useTranslator(generationParams?: MarianGeneration) {
 
     for (let i = 0; i < workersMax; i++) {
       const worker = new Worker()
-      worker.onmessage = (event: MessageEvent<ModelOutput>) => {
-        if (event.data.status === 'ready') {
-          const workerId = nanoid()
-          activeWorkersPool.push({ workerId, worker, status: 'free' })
-          processSentenceQueue()
-        } else if (event.data.status === 'result') {
-          // console.log(event.data)
-          translatedSentences.value[event.data.index] = event.data.result
-          const workerId = event.data.workerId
-          const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
-          activeWorkersPool[currWorker].status = 'free'
-          processSentenceQueue()
-        } else if (event.data.status === 'update') {
-          // console.log(event.data)
-          const originalText = translatedSentences.value[event.data.index] ?? ''
-          translatedSentences.value[event.data.index] = originalText + event.data.result
-        }
+      attachListeners(worker)
+    }
+  }
+
+  const attachListeners = (worker: Worker, initialWorker: boolean = false) => {
+    worker.onmessage = (event: MessageEvent<ModelOutput>) => {
+      if (event.data.status === 'ready') {
+        const workerId = nanoid()
+        activeWorkersPool.push({ workerId, worker, status: 'free' })
+        if (!initialWorker) processSentenceQueue()
+      } else if (event.data.status === 'result') {
+        // console.log(event.data)
+        translatedSentences.value[event.data.index] = event.data.result
+        const workerId = event.data.workerId
+        const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
+        activeWorkersPool[currWorker].status = 'free'
+        if (!initialWorker) processSentenceQueue()
+      } else if (event.data.status === 'update') {
+        // console.log(event.data)
+        const originalText = translatedSentences.value[event.data.index] ?? ''
+        translatedSentences.value[event.data.index] = originalText + event.data.result
       }
     }
   }
@@ -135,7 +139,11 @@ export function useTranslator(generationParams?: MarianGeneration) {
   const download = async () => {
     const worker = new Worker()
     worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
-      if (event.data.status !== 'downloading') return
+      if (event.data.status !== 'downloading') {
+        worker.onmessage = null
+        attachListeners(worker, true)
+        return
+      }
       if (event.data.result.status === 'initiate') {
         fileProgressDetails.value.set(event.data.result.file, { loaded: 0, total: 0 })
       } else if (event.data.result.status === 'progress') {
@@ -170,5 +178,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
     outputText,
     translatedSentences,
     isTranslating,
+    sentenceQueue,
+    activeWorkersPool,
   }
 }
