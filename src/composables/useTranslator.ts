@@ -19,12 +19,19 @@ const activeWorkersPool: Array<{
 const isLoaded = ref(false)
 const cores = window.navigator.hardwareConcurrency ?? 1
 
-export function useTranslator(generationParams?: MarianGeneration) {
+export function useTranslator(initialGenerationParams?: MarianGeneration) {
   const smartTextSplitter = new SmartTextSplitter()
-  const maxConcurrentWorkers = Math.max(1, cores - 2)
+  const maxConcurrentWorkers = ref(Math.max(1, cores - 1))
   const sentenceQueue: SentenceEntry[] = []
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
+  const generationParams = ref(
+    initialGenerationParams ?? {
+      max_length: 512,
+      num_beams: 5,
+      early_stopping: true,
+    },
+  )
 
   const checkIfAllDone = () => {
     const queueEmpty = sentenceQueue.length === 0
@@ -74,7 +81,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
     worker.worker.postMessage({
       task: 'translate',
       input: translating.text,
-      generation: generationParams ?? {},
+      generation: generationParams.value ? { ...generationParams.value } : {},
       index: translating.index,
       workerId: activeWorkersPool[currWorker].workerId,
     })
@@ -93,7 +100,10 @@ export function useTranslator(generationParams?: MarianGeneration) {
 
     translatedSentences.value = Array.from({ length: newSentences.length })
 
-    const workersMax = Math.min(maxConcurrentWorkers, sentenceQueue.length)
+    const activeWorkers = activeWorkersPool.filter(
+      (work) => work.status === 'free' || work.status === 'working',
+    ).length
+    const workersMax = Math.min(maxConcurrentWorkers.value - activeWorkers, sentenceQueue.length)
 
     for (let i = 0; i < workersMax; i++) {
       const worker = new Worker()
@@ -176,5 +186,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
     isTranslating,
     sentenceQueue,
     activeWorkersPool,
+    generationParams,
+    maxConcurrentWorkers,
   }
 }

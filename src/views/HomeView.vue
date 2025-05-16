@@ -39,21 +39,10 @@
         </TabList>
 
         <TabPanels class="mt-2">
-          <TabPanel
-            :class="[
-              'rounded-xl bg-white py-3',
-              'ring-white/60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
-            ]"
-          >
+          <TabPanel>
             <TextTranslate></TextTranslate>
           </TabPanel>
-          <TabPanel
-            :class="[
-              'rounded-xl bg-white py-3',
-              'ring-white/60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
-            ]"
-          >
-          </TabPanel>
+          <TabPanel> </TabPanel>
         </TabPanels>
       </TabGroup>
     </div>
