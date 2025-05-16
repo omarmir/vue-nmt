@@ -7,6 +7,7 @@ import type {
 import { computed, ref, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
+import { SmartTextSplitter } from '@/lib/nlp'
 
 const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
 const { pipeline, env } = await import(transformersURL)
@@ -27,6 +28,7 @@ fileProgressDetails.value.set(ready, { loaded: 0, total: 100 }) // Just to accou
 const cores = window.navigator.hardwareConcurrency ?? 1
 
 export function useTranslator(generationParams?: MarianGeneration) {
+  const smartTextSplitter = new SmartTextSplitter()
   const maxConcurrentWorkers = Math.max(1, cores - 2)
   const sentenceQueue: Array<{ text: string; index: number }> = []
   const activeWorkersPool: Array<{
@@ -171,6 +173,11 @@ export function useTranslator(generationParams?: MarianGeneration) {
     return translatedSentences.value.join(' ')
   })
 
+  const splitSentence = async (text: string) => {
+    const split = await smartTextSplitter.getSentenceMap(text)
+    console.log(split)
+  }
+
   return {
     cores,
     download,
@@ -182,5 +189,6 @@ export function useTranslator(generationParams?: MarianGeneration) {
     outputText,
     translatedSentences,
     isTranslating,
+    splitSentence,
   }
 }
