@@ -9,6 +9,9 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   appType: 'mpa',
+  build: {
+    target: 'esnext',
+  },
   plugins: [
     vue(),
     vueDevTools(),
@@ -50,5 +53,8 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  worker: {
+    format: 'es',
   },
 })
