@@ -5,7 +5,7 @@
         <span v-if="!isLoaded">Loading Model...</span>
         <span v-else>Model Loaded</span>
       </div>
-      <ProgressBar :loaded :total></ProgressBar>
+      <ProgressBar :loaded :total :holdback="10" :release="isLoaded"></ProgressBar>
     </div>
     <div class="w-full">
       <TabGroup>

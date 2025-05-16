@@ -11,14 +11,12 @@ import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
 
 // Variables to track overall download progress
 const fileProgressDetails = ref(new Map<string, DownloadStatus>())
-const ready = 'vue-nmt-ready'
-fileProgressDetails.value.set(ready, { loaded: 0, total: 100 }) // Just to account for the delay
 const activeWorkersPool: Array<{
   workerId: string
   worker: Worker | undefined
   status: 'free' | 'working' | 'disposed'
 }> = []
-
+const isLoaded = ref(false)
 const cores = window.navigator.hardwareConcurrency ?? 1
 
 export function useTranslator(generationParams?: MarianGeneration) {
@@ -132,8 +130,6 @@ export function useTranslator(generationParams?: MarianGeneration) {
     Array.from(fileProgressDetails.value.values()).reduce((sum, { loaded }) => sum + loaded, 0),
   )
 
-  const isLoaded = computed(() => loaded.value === total.value)
-
   // Function to trigger the download and caching of the model
 
   const download = async () => {
@@ -158,9 +154,9 @@ export function useTranslator(generationParams?: MarianGeneration) {
           total: file?.total ?? 1,
         })
       } else if (event.data.result.status === 'ready') {
-        fileProgressDetails.value.set(ready, { loaded: 100, total: 100 })
         const workerId = nanoid()
         activeWorkersPool.push({ workerId, worker, status: 'free' })
+        isLoaded.value = true
       }
     }
   }
