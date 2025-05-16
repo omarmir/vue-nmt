@@ -86,15 +86,11 @@ self.addEventListener(
       callback_function: (text) => updateCallback(text, message.index, message.workerId),
     })
 
-    console.log(message.generation)
-
     try {
       const output = await translator(inputText, {
         ...message.generation,
         streamer,
       })
-
-      console.log(output)
 
       resultCallback(output[0].translation_text, message.index, message.workerId)
     } catch (err) {

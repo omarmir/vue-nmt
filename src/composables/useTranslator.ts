@@ -7,7 +7,7 @@ import type {
 import { computed, ref, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
-import { SmartTextSplitter } from '@/lib/nlp'
+import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
 
 const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
 const { pipeline, env } = await import(transformersURL)
@@ -30,65 +30,67 @@ const cores = window.navigator.hardwareConcurrency ?? 1
 export function useTranslator(generationParams?: MarianGeneration) {
   const smartTextSplitter = new SmartTextSplitter()
   const maxConcurrentWorkers = Math.max(1, cores - 2)
-  const sentenceQueue: Array<{ text: string; index: number }> = []
+  const sentenceQueue: SentenceEntry[] = []
   const activeWorkersPool: Array<{
     workerId: string
     worker: Worker | undefined
     status: 'free' | 'working' | 'disposed'
   }> = []
-  const translatedSentences: Ref<Array<string>> = ref([])
+  const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
 
-  const processSentenceQueue = () => {
-    console.log(sentenceQueue)
-    if (sentenceQueue.length > 0) {
-      const translating = sentenceQueue[0]
-
-      const currWorker = activeWorkersPool.findIndex((worker) => worker.status === 'free')
-      const worker = activeWorkersPool[currWorker]
-
-      if (worker.worker === undefined) {
-        return
-      }
-      sentenceQueue.splice(0, 1)
-
-      worker.status = 'working'
-      worker.worker.postMessage({
-        task: 'translate',
-        input: translating.text,
-        generation: generationParams ?? {},
-        index: translating.index,
-        workerId: activeWorkersPool[currWorker].workerId,
-      })
-
-      worker.worker.onmessage = (event: MessageEvent<ModelOutput>) => {
-        if (event.data.status === 'result') {
-          console.log(event.data)
-          translatedSentences.value[event.data.index] = event.data.result
-          const workerId = event.data.workerId
-          const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
-          activeWorkersPool[currWorker].status = 'free'
-          processSentenceQueue()
-        } else if (event.data.status === 'update') {
-          console.log(event.data)
-          const originalText = translatedSentences.value[event.data.index] ?? ''
-          translatedSentences.value[event.data.index] = originalText + event.data.result
-        }
-      }
-    } else {
+  const checkIfAllDone = () => {
+    const queueEmpty = sentenceQueue.length === 0
+    const allFree = activeWorkersPool.every((worker) => worker.status !== 'working')
+    if (queueEmpty && allFree) {
       activeWorkersPool.forEach((worker) => {
-        if (worker.status === 'free') {
-          if (!worker.worker) return
-          worker.worker.postMessage('dispose')
-          worker.status = 'disposed'
-          console.log('disposing:', worker.workerId)
-          worker.worker.onmessage = null
-          worker.worker.terminate()
-          worker.worker = undefined
-        }
+        if (!worker.worker) return
+        worker.worker.postMessage('dispose')
+        worker.status = 'disposed'
+        console.log('disposing:', worker.workerId)
+        worker.worker.onmessage = null
+        worker.worker.terminate()
+        worker.worker = undefined
+        console.log('dispose', worker.workerId)
       })
       isTranslating.value = false
     }
+  }
+
+  const processSentenceQueue = () => {
+    if (sentenceQueue.length <= 0) {
+      checkIfAllDone()
+      return
+    }
+
+    const translating = sentenceQueue[0]
+
+    if (!translating.shouldTranslate) {
+      translatedSentences.value[translating.index] = translating.text
+      sentenceQueue.splice(0, 1)
+      processSentenceQueue()
+      return
+    }
+
+    const currWorker = activeWorkersPool.findIndex((worker) => worker.status === 'free')
+    if (currWorker === -1) {
+      return // No free worker yet, wait for one to become free - this should happen when the next one becomes free
+    }
+
+    const worker = activeWorkersPool[currWorker]
+    if (worker.worker === undefined) {
+      return
+    }
+    sentenceQueue.splice(0, 1)
+
+    worker.status = 'working'
+    worker.worker.postMessage({
+      task: 'translate',
+      input: translating.text,
+      generation: generationParams ?? {},
+      index: translating.index,
+      workerId: activeWorkersPool[currWorker].workerId,
+    })
   }
 
   const progressCallback = (data: ModelStatus) => {
@@ -114,8 +116,11 @@ export function useTranslator(generationParams?: MarianGeneration) {
 
     isTranslating.value = true
 
-    const sentences = splitIntoSentences(input.trim())
-    sentenceQueue.push(...sentences.map((s, i) => ({ text: s, index: i })))
+    const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
+
+    sentenceQueue.push(...newSentences)
+
+    translatedSentences.value = Array.from({ length: newSentences.length })
 
     const workersMax = Math.min(maxConcurrentWorkers, sentenceQueue.length)
 
@@ -126,6 +131,17 @@ export function useTranslator(generationParams?: MarianGeneration) {
           const workerId = nanoid()
           activeWorkersPool.push({ workerId, worker, status: 'free' })
           processSentenceQueue()
+        } else if (event.data.status === 'result') {
+          // console.log(event.data)
+          translatedSentences.value[event.data.index] = event.data.result
+          const workerId = event.data.workerId
+          const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
+          activeWorkersPool[currWorker].status = 'free'
+          processSentenceQueue()
+        } else if (event.data.status === 'update') {
+          // console.log(event.data)
+          const originalText = translatedSentences.value[event.data.index] ?? ''
+          translatedSentences.value[event.data.index] = originalText + event.data.result
         }
       }
     }
@@ -156,27 +172,7 @@ export function useTranslator(generationParams?: MarianGeneration) {
     }
   }
 
-  // Function to split text into sentences (moved here to be accessible by useTranslator)
-  function splitIntoSentences(text: string): string[] {
-    if (!text) {
-      return []
-    }
-    // Split by common sentence-ending punctuation followed by zero or more whitespace characters.
-    // Uses a positive lookbehind (?<=[.!?]) to ensure the punctuation is kept in the resulting segments.
-    const sentences = text.split(/(?<=[.!?])\s*/)
-    // Filter out any empty strings and trim whitespace.
-    translatedSentences.value = Array.from({ length: sentences.length })
-    return sentences.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0)
-  }
-
-  const outputText = computed(() => {
-    return translatedSentences.value.join(' ')
-  })
-
-  const splitSentence = async (text: string) => {
-    const split = await smartTextSplitter.getSentenceMap(text)
-    console.log(split)
-  }
+  const outputText = computed(() => translatedSentences.value.join(''))
 
   return {
     cores,
@@ -189,6 +185,5 @@ export function useTranslator(generationParams?: MarianGeneration) {
     outputText,
     translatedSentences,
     isTranslating,
-    splitSentence,
   }
 }

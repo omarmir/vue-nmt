@@ -183,20 +183,4 @@ export class SmartTextSplitter {
     this.sentenceMapCache = entries
     return entries
   }
-
-  /**
-   * Reconstructs text from an array of SentenceEntry objects.
-   * This method assumes that any translatable text within the `entries` array
-   * (where `shouldTranslate` was true) might have already been translated
-   * (e.g., to French) before this method is called.
-   *
-   * @param entries The array of SentenceEntry objects, potentially with translations.
-   * @returns The reconstructed text string.
-   */
-  public reconstructText(entries: SentenceEntry[]): string {
-    // Sort by index just in case the array was reordered, though getSentenceMap produces them in order.
-    // This ensures reconstruction fidelity if the array is manipulated externally.
-    const sortedEntries = [...entries].sort((a, b) => a.index - b.index)
-    return sortedEntries.map((entry) => entry.text).join('')
-  }
 }
