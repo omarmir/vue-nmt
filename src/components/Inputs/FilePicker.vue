@@ -11,7 +11,7 @@
       :required
       :aria-describedby="`${name}-help`"
       :aria-labelledby="`${name}-label`"
-      class="block rounded-md w-full border border-blue-700 file:text-blue-700 text-sm shadow-sm file:me-4 file:border-0 file:bg-blue-100 file:px-4 file:py-2.5 focus:z-10 focus:border-blue-500 focus:ring-blue-500 disabled:pointer-events-none disabled:opacity-50"
+      class="file:cursor-pointer hover:file:text-blue-500 block hover:file:bg-blue-200 rounded-md w-full border border-blue-700 file:text-blue-700 text-sm shadow-sm file:me-4 file:border-0 file:bg-blue-100 file:px-4 file:py-2.5 focus:z-10 focus:border-blue-500 focus:ring-blue-500 disabled:pointer-events-none disabled:opacity-50"
       @change="onFileChange"
     />
   </div>
