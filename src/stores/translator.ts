@@ -1,9 +1,11 @@
 import type { DownloadStatus, ModelOutput, ModelStatus } from '@/types/Transformers'
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
 import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
 import { defineStore } from 'pinia'
+import JSZip from 'jszip'
+import { extractSentences, loadXmlDocs, reconstructFile, type NodeMaps } from '@/utils/document'
 
 export const useTranslatorStore = defineStore('translator', () => {
   const fileProgressDetails = ref(new Map<string, DownloadStatus>())
@@ -25,6 +27,14 @@ export const useTranslatorStore = defineStore('translator', () => {
     num_beams: 5,
     early_stopping: true,
   })
+  let currentTranslation: 'doc' | 'txt' | null = null
+  let currentDocContext: {
+    nodeMaps: NodeMaps[]
+    docs: Record<string, Document>
+    zip: JSZip
+    fileName: string
+    mimeType: string
+  } | null = null
 
   const checkIfAllDone = () => {
     const queueEmpty = sentenceQueue.value.length === 0
@@ -41,6 +51,15 @@ export const useTranslatorStore = defineStore('translator', () => {
         console.log('dispose', worker.workerId)
       })
       isTranslating.value = false
+      // If we were doing a doc, reconstruct immediately
+      if (currentTranslation === 'doc' && currentDocContext) {
+        const { nodeMaps, docs, zip, fileName, mimeType } = currentDocContext
+        // reconstructFile updates zip and triggers download
+        reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
+      }
+
+      currentDocContext = null
+      currentTranslation = null
     }
   }
 
@@ -80,19 +99,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     })
   }
 
-  const translate = async (input: string) => {
-    if (input.trim() === '') {
-      return
-    }
-
-    isTranslating.value = true
-
-    const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
-
-    sentenceQueue.value.push(...newSentences)
-
-    translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
-
+  const spawnWorkers = () => {
     const activeWorkers = activeWorkersPool.filter((work) => work.status === 'free').length
     const workersMax = Math.max(
       Math.min(
@@ -113,6 +120,24 @@ export const useTranslatorStore = defineStore('translator', () => {
       const worker = new Worker()
       attachListeners(worker)
     }
+  }
+
+  const translate = async (input: string) => {
+    currentTranslation = 'txt'
+
+    if (input.trim() === '') {
+      return
+    }
+
+    isTranslating.value = true
+
+    const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
+
+    sentenceQueue.value.push(...newSentences)
+
+    translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
+
+    spawnWorkers()
   }
 
   const attachListeners = (worker: Worker) => {
@@ -175,8 +200,40 @@ export const useTranslatorStore = defineStore('translator', () => {
   )
 
   const outputText = computed(() => {
+    if (currentTranslation === 'doc') return
     return translatedSentences.value.join('')
   })
+
+  const translateDocument = async (file: File) => {
+    currentTranslation = 'doc'
+
+    isTranslating.value = true
+    const arrayBuffer = await file.arrayBuffer()
+    const zip = await JSZip.loadAsync(arrayBuffer)
+
+    // load & extract
+    const docs = await loadXmlDocs(zip)
+    const { nodeMaps, queue } = await extractSentences(docs, smartTextSplitter)
+    console.log('que', queue)
+    console.log('nodemaps', nodeMaps)
+
+    // setup queue and results
+    sentenceQueue.value = queue.slice()
+    translatedSentences.value = Array(queue.length).fill('')
+
+    spawnWorkers()
+
+    await new Promise<void>((resolve) => {
+      const stop = watch(isTranslating, (val) => {
+        if (!val) {
+          stop()
+          resolve()
+        }
+      })
+    })
+
+    await reconstructFile(nodeMaps, translatedSentences.value, docs, zip, file.name, file.type)
+  }
 
   download()
 
@@ -195,5 +252,6 @@ export const useTranslatorStore = defineStore('translator', () => {
     activeWorkersPool,
     generationParams,
     maxConcurrentWorkers,
+    translateDocument,
   }
 })

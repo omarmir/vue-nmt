@@ -47,7 +47,9 @@
           <TabPanel>
             <TextTranslate></TextTranslate>
           </TabPanel>
-          <TabPanel> </TabPanel>
+          <TabPanel>
+            <FileTranslate></FileTranslate>
+          </TabPanel>
         </TabPanels>
       </TabGroup>
     </div>
@@ -58,6 +60,7 @@ import TextTranslate from '@/components/TextTranslate.vue'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
 import ProgressBar from '@/components/Inputs/ProgressBar.vue'
 import { useTranslatorStore } from '@/stores/translator'
+import FileTranslate from '@/components/FileTranslate.vue'
 
 const store = useTranslatorStore()
 </script>
