@@ -2,7 +2,7 @@
   <div class="w-full bg-gray-200 rounded-full h-2.5">
     <div
       class="bg-blue-600 h-2.5 rounded-full"
-      :style="`width: ${progress - (release ? 0 : holdback)}%`"
+      :style="`width: ${Math.max(progress - (release ? 0 : holdback), 0)}%`"
     ></div>
   </div>
 </template>

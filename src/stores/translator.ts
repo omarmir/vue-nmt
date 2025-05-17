@@ -135,7 +135,7 @@ export const useTranslatorStore = defineStore('translator', () => {
 
     sentenceQueue.value.push(...newSentences)
 
-    translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
+    translatedSentences.value = []
 
     spawnWorkers()
   }
@@ -219,7 +219,7 @@ export const useTranslatorStore = defineStore('translator', () => {
 
     // setup queue and results
     sentenceQueue.value = queue.slice()
-    translatedSentences.value = Array(queue.length).fill('')
+    translatedSentences.value = []
 
     spawnWorkers()
 

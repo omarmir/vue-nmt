@@ -10,13 +10,14 @@
       class="w-full"
       @click="translateDoc()"
       :disabled="store.isTranslating || !store.isLoaded"
-      >Translate</PrimaryButton
     >
+      Translate
+    </PrimaryButton>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
     <ProgressBar
       v-if="store.isTranslating"
-      :total="store.translatedSentences.length"
-      :loaded="store.translatedSentences.length - store.sentenceQueue.length"
+      :total="store.sentenceQueue.length + store.translatedSentences.length"
+      :loaded="store.translatedSentences.length"
       :holdback="10"
       :release="false"
     ></ProgressBar>
