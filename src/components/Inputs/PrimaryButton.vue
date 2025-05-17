@@ -2,9 +2,10 @@
   <button
     :disabled
     :class="theme"
-    class="disabled:cursor-not-allowed focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 text-center cursor-pointer"
+    class="disabled:cursor-not-allowed focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 text-center cursor-pointer flex flex-row items-center"
     :type="isSubmit ? 'submit' : 'button'"
   >
+    <slot name="icon"></slot>
     <slot></slot>
   </button>
 </template>

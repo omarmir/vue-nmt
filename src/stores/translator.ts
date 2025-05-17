@@ -61,7 +61,6 @@ export const useTranslatorStore = defineStore('translator', () => {
       }
 
       currentDocContext = null
-      currentTranslation.value = null
     }
   }
 
