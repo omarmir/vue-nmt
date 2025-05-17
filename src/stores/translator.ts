@@ -258,5 +258,6 @@ export const useTranslatorStore = defineStore('translator', () => {
     activeWorkersPool,
     state,
     translateDocument,
+    currentTranslation,
   }
 })

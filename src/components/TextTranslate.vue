@@ -18,7 +18,11 @@
     <GenerationConfig></GenerationConfig>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
     <div class="flex flex-row place-content-end">
-      <PrimaryButton theme="success" v-if="!store.isTranslating && isSupported" @click="copyText()">
+      <PrimaryButton
+        theme="success"
+        v-if="!store.isTranslating && isSupported && store.currentTranslation === 'txt'"
+        @click="copyText()"
+      >
         <template #icon v-if="isCopied">
           <TransitionRoot
             :show="isCopied"
