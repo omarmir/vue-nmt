@@ -16,7 +16,7 @@ export const useTranslatorStore = defineStore('translator', () => {
   const isLoaded = ref(false)
   const cores = window.navigator.hardwareConcurrency ?? 1
   const smartTextSplitter = new SmartTextSplitter()
-  const maxConcurrentWorkers = ref(Math.max(1, cores - 1))
+  const maxConcurrentWorkers = ref(Math.max(1, cores - 2))
   const sentenceQueue: Ref<SentenceEntry[]> = ref([])
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
