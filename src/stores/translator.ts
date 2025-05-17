@@ -200,8 +200,8 @@ export const useTranslatorStore = defineStore('translator', () => {
   )
 
   const outputText = computed(() => {
-    if (currentTranslation === 'doc') return
-    return translatedSentences.value.join('')
+    if (currentTranslation === 'txt') return translatedSentences.value.join('')
+    return 'French text will appear here'
   })
 
   const translateDocument = async (file: File) => {
@@ -214,8 +214,8 @@ export const useTranslatorStore = defineStore('translator', () => {
     // load & extract
     const docs = await loadXmlDocs(zip)
     const { nodeMaps, queue } = await extractSentences(docs, smartTextSplitter)
-    console.log('que', queue)
-    console.log('nodemaps', nodeMaps)
+    // console.log('que', queue)
+    // console.log('nodemaps', nodeMaps)
 
     // setup queue and results
     sentenceQueue.value = queue.slice()
