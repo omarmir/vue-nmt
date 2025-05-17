@@ -4,7 +4,7 @@ import type {
   ModelOutput,
   ModelStatus,
 } from '@/types/Transformers'
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
 import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
@@ -60,7 +60,7 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
     const translating = sentenceQueue[0]
 
     if (!translating.shouldTranslate) {
-      translatedSentences.value[translating.index] = translating.text
+      translatedSentences.value.splice(translating.index, 1, translating.text)
       sentenceQueue.splice(0, 1)
       processSentenceQueue()
       return
@@ -96,14 +96,21 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
 
     const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
 
+    console.log(JSON.stringify(newSentences))
+
     sentenceQueue.push(...newSentences)
 
-    translatedSentences.value = Array.from({ length: newSentences.length })
+    translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
 
-    const activeWorkers = activeWorkersPool.filter(
-      (work) => work.status === 'free' || work.status === 'working',
-    ).length
+    const activeWorkers = activeWorkersPool.filter((work) => work.status === 'free').length
     const workersMax = Math.min(maxConcurrentWorkers.value - activeWorkers, sentenceQueue.length)
+
+    if (sentenceQueue.length === activeWorkers) {
+      activeWorkersPool.forEach((worker) => {
+        if (worker.worker && worker.status === 'free') processSentenceQueue()
+      })
+      return
+    }
 
     for (let i = 0; i < workersMax; i++) {
       const worker = new Worker()
@@ -119,7 +126,8 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
         if (!initialWorker) processSentenceQueue()
       } else if (event.data.status === 'result') {
         // console.log(event.data)
-        translatedSentences.value[event.data.index] = event.data.result
+        // translatedSentences.value[event.data.index] = event.data.result
+        translatedSentences.value.splice(event.data.index, 1, event.data.result)
         const workerId = event.data.workerId
         const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
         activeWorkersPool[currWorker].status = 'free'
@@ -127,7 +135,7 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
       } else if (event.data.status === 'update') {
         // console.log(event.data)
         const originalText = translatedSentences.value[event.data.index] ?? ''
-        translatedSentences.value[event.data.index] = originalText + event.data.result
+        translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
       }
     }
   }
@@ -171,7 +179,23 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
     }
   }
 
-  const outputText = computed(() => translatedSentences.value.join(''))
+  const outputText = ref('Translated french will be show up here')
+
+  watch(outputText, (val) => {
+    console.log('outputText changed:', val)
+  })
+
+  watch(
+    translatedSentences,
+    (val) => {
+      if (val.length === 1) {
+        outputText.value = val[0]
+      } else {
+        outputText.value = val.join('')
+      }
+    },
+    { deep: true },
+  )
 
   return {
     cores,
