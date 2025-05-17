@@ -35,9 +35,7 @@
               Threads
             </RangeSlider>
             <div class="grid grid-cols-12">
-              <span class="text-sm font-medium text-gray-900 dark:text-gray-300 col-span-4"
-                >Early stop</span
-              >
+              <span class="text-sm font-medium text-gray-900 col-span-4">Early stop</span>
               <label class="inline-flex items-center cursor-pointer col-span-8 place-content-end">
                 <input type="checkbox" v-model="marianGen.early_stopping" class="sr-only peer" />
                 <div
