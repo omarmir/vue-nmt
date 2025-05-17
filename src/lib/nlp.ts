@@ -25,9 +25,6 @@ export class SmartTextSplitter {
   private static itsLogic: ItsType | null = null
   private static nlpInitializationPromise: Promise<void> | null = null
 
-  private inputText: string | undefined
-  private sentenceMapCache: SentenceEntry[] | null = null
-
   /**
    * Initializes the splitter with the text to be processed.
    * Ensures that the underlying NLP engine is initialized.
@@ -76,23 +73,17 @@ export class SmartTextSplitter {
    * @returns A Promise resolving to an array of SentenceEntry objects.
    */
   public async getSentenceMap(text: string): Promise<SentenceEntry[]> {
-    this.inputText = text
-    if (this.sentenceMapCache !== null) {
-      return this.sentenceMapCache
-    }
-
     const { nlp, its } = await this.getNLPEngine() // Ensure NLP is ready
 
     const entries: SentenceEntry[] = []
     let globalIndex = 0
 
-    if (this.inputText === null || this.inputText === undefined || this.inputText.length === 0) {
-      this.sentenceMapCache = entries
-      return entries
+    if (text === null || text === undefined || text.length === 0) {
+      return []
     }
 
     const newlineRegexPattern = /(\r\n|\r|\n)+/
-    const segments: string[] = this.inputText.split(newlineRegexPattern)
+    const segments: string[] = text.split(newlineRegexPattern)
 
     for (const segment of segments) {
       if (segment === undefined || segment === '') {
@@ -180,7 +171,6 @@ export class SmartTextSplitter {
         }
       }
     }
-    this.sentenceMapCache = entries
     return entries
   }
 }

@@ -1,5 +1,6 @@
 <template>
   <div class="flex flex-col w-full gap-4">
+    {{ english }}
     <TextArea
       name="english"
       placeholder="Type in your english content here"
@@ -10,7 +11,7 @@
     </TextArea>
     <PrimaryButton
       class="w-full"
-      @click="translateText"
+      @click="store.translate(english)"
       :disabled="store.isTranslating || !store.isLoaded"
     >
       Translate
@@ -33,6 +34,4 @@ import { useTranslatorStore } from '@/stores/translator'
 const store = useTranslatorStore()
 
 const english = ref(`Hello`)
-
-const translateText = () => store.translate(english.value)
 </script>
