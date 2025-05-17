@@ -89,8 +89,6 @@ export const useTranslatorStore = defineStore('translator', () => {
 
     const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
 
-    console.log(JSON.stringify(newSentences))
-
     sentenceQueue.value.push(...newSentences)
 
     translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
@@ -103,10 +101,6 @@ export const useTranslatorStore = defineStore('translator', () => {
       ),
       1,
     )
-
-    console.log('maxCon', maxConcurrentWorkers.value)
-    console.log('active', activeWorkers)
-    console.log('transSent', sentenceQueue.value.filter((sen) => sen.shouldTranslate).length)
 
     if (sentenceQueue.value.length === activeWorkers) {
       activeWorkersPool.forEach((worker) => {
@@ -128,7 +122,7 @@ export const useTranslatorStore = defineStore('translator', () => {
         activeWorkersPool.push({ workerId, worker, status: 'free', initial: false })
         processSentenceQueue()
       } else if (event.data.status === 'result') {
-        console.log(event.data)
+        // console.log(event.data)
         // translatedSentences.value[event.data.index] = event.data.result
         translatedSentences.value.splice(event.data.index, 1, event.data.result)
         const workerId = event.data.workerId
@@ -136,7 +130,7 @@ export const useTranslatorStore = defineStore('translator', () => {
         activeWorkersPool[currWorker].status = 'free'
         processSentenceQueue()
       } else if (event.data.status === 'update') {
-        console.log(event.data)
+        // console.log(event.data)
         const originalText = translatedSentences.value[event.data.index] ?? ''
         translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
       }

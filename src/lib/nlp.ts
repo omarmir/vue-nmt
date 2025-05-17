@@ -82,7 +82,9 @@ export class SmartTextSplitter {
       return []
     }
 
-    const newlineRegexPattern = /(\r\n|\r|\n)+/
+    // Regex to split by newlines. The capturing group ensures that the newline
+    // sequences themselves are included in the resulting array.
+    const newlineRegexPattern = /((?:\r\n|\r|\n)+)/
     const segments: string[] = text.split(newlineRegexPattern)
 
     for (const segment of segments) {
