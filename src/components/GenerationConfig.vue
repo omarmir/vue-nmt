@@ -59,6 +59,6 @@ const marianGen = defineModel<MarianGeneration>({
 
 const threads = defineModel<number>('threads', { required: true })
 
-const maxThreads = threads.value
+const maxThreads = navigator.hardwareConcurrency ?? 1
 const maxLength = marianGen.value.max_length
 </script>
