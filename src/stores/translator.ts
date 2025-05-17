@@ -6,6 +6,7 @@ import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
 import { defineStore } from 'pinia'
 import JSZip from 'jszip'
 import { extractSentences, loadXmlDocs, reconstructFile, type NodeMaps } from '@/utils/document'
+import { useStorage } from '@vueuse/core'
 
 export const useTranslatorStore = defineStore('translator', () => {
   const fileProgressDetails = ref(new Map<string, DownloadStatus>())
@@ -18,16 +19,17 @@ export const useTranslatorStore = defineStore('translator', () => {
   const isLoaded = ref(false)
   const cores = window.navigator.hardwareConcurrency ?? 1
   const smartTextSplitter = new SmartTextSplitter()
-  const maxConcurrentWorkers = ref(Math.max(1, cores - 2))
   const sentenceQueue: Ref<SentenceEntry[]> = ref([])
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
-  const generationParams = ref({
+  const state = useStorage('vue-nmt', {
     max_length: 512,
     num_beams: 5,
     early_stopping: true,
+    threads: Math.max(1, cores - 2),
   })
-  let currentTranslation: 'doc' | 'txt' | null = null
+
+  const currentTranslation: Ref<'doc' | 'txt' | null> = ref(null)
   let currentDocContext: {
     nodeMaps: NodeMaps[]
     docs: Record<string, Document>
@@ -52,14 +54,14 @@ export const useTranslatorStore = defineStore('translator', () => {
       })
       isTranslating.value = false
       // If we were doing a doc, reconstruct immediately
-      if (currentTranslation === 'doc' && currentDocContext) {
+      if (currentTranslation.value === 'doc' && currentDocContext) {
         const { nodeMaps, docs, zip, fileName, mimeType } = currentDocContext
         // reconstructFile updates zip and triggers download
         reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
       }
 
       currentDocContext = null
-      currentTranslation = null
+      currentTranslation.value = null
     }
   }
 
@@ -93,7 +95,11 @@ export const useTranslatorStore = defineStore('translator', () => {
     worker.worker.postMessage({
       task: 'translate',
       input: translating.text,
-      generation: generationParams.value ? { ...generationParams.value } : {},
+      generation: {
+        max_length: state.value.max_length,
+        early_stopping: state.value.early_stopping,
+        num_beams: state.value.num_beams,
+      },
       index: translating.index,
       workerId: activeWorkersPool[currWorker].workerId,
     })
@@ -103,7 +109,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     const activeWorkers = activeWorkersPool.filter((work) => work.status === 'free').length
     const workersMax = Math.max(
       Math.min(
-        maxConcurrentWorkers.value - activeWorkers,
+        state.value.threads - activeWorkers,
         sentenceQueue.value.filter((sen) => sen.shouldTranslate).length - activeWorkers,
       ),
       1,
@@ -123,7 +129,7 @@ export const useTranslatorStore = defineStore('translator', () => {
   }
 
   const translate = async (input: string) => {
-    currentTranslation = 'txt'
+    currentTranslation.value = 'txt'
 
     if (input.trim() === '') {
       return
@@ -200,12 +206,13 @@ export const useTranslatorStore = defineStore('translator', () => {
   )
 
   const outputText = computed(() => {
-    if (currentTranslation === 'txt') return translatedSentences.value.join('')
-    return 'French text will appear here'
+    if (currentTranslation.value !== 'txt') return 'French text will appear here'
+    // return 'French text will appear here'
+    return translatedSentences.value.join('')
   })
 
   const translateDocument = async (file: File) => {
-    currentTranslation = 'doc'
+    currentTranslation.value = 'doc'
 
     isTranslating.value = true
     const arrayBuffer = await file.arrayBuffer()
@@ -250,8 +257,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     isTranslating,
     sentenceQueue,
     activeWorkersPool,
-    generationParams,
-    maxConcurrentWorkers,
+    state,
     translateDocument,
   }
 })

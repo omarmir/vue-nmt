@@ -13,10 +13,7 @@
     >
       Translate
     </PrimaryButton>
-    <GenerationConfig
-      v-model="store.generationParams"
-      v-model:threads="store.maxConcurrentWorkers"
-    ></GenerationConfig>
+    <GenerationConfig></GenerationConfig>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
     <ProgressBar
       v-if="store.isTranslating"

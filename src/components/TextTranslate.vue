@@ -15,10 +15,7 @@
     >
       Translate
     </PrimaryButton>
-    <GenerationConfig
-      v-model="store.generationParams"
-      v-model:threads="store.maxConcurrentWorkers"
-    ></GenerationConfig>
+    <GenerationConfig></GenerationConfig>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
     <div class="whitespace-pre-wrap">
       {{ store.outputText }}
