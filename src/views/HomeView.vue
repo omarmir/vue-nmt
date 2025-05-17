@@ -2,10 +2,15 @@
   <main>
     <div class="pb-4">
       <div class="text-blue-500 font-bold">
-        <span v-if="!isLoaded">Loading Model...</span>
+        <span v-if="!store.isLoaded">Loading Model...</span>
         <span v-else>Model Loaded</span>
       </div>
-      <ProgressBar :loaded :total :holdback="10" :release="isLoaded"></ProgressBar>
+      <ProgressBar
+        :loaded="store.loaded"
+        :total="store.total"
+        :holdback="10"
+        :release="store.isLoaded"
+      ></ProgressBar>
     </div>
     <div class="w-full">
       <TabGroup>
@@ -50,10 +55,9 @@
 </template>
 <script setup lang="ts">
 import TextTranslate from '@/components/TextTranslate.vue'
-import { useTranslator } from '@/composables/useTranslator'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
 import ProgressBar from '@/components/Inputs/ProgressBar.vue'
+import { useTranslatorStore } from '@/stores/translator'
 
-const { download, loaded, total, isLoaded } = useTranslator()
-download()
+const store = useTranslatorStore()
 </script>

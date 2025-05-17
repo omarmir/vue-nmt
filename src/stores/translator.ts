@@ -1,44 +1,37 @@
-import type {
-  DownloadStatus,
-  MarianGeneration,
-  ModelOutput,
-  ModelStatus,
-} from '@/types/Transformers'
-import { computed, ref, watch, type Ref } from 'vue'
+import type { DownloadStatus, ModelOutput, ModelStatus } from '@/types/Transformers'
+import { computed, ref, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
 import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
+import { defineStore } from 'pinia'
 
-// Variables to track overall download progress
-const fileProgressDetails = ref(new Map<string, DownloadStatus>())
-const activeWorkersPool: Array<{
-  workerId: string
-  worker: Worker | undefined
-  status: 'free' | 'working' | 'disposed'
-}> = []
-const isLoaded = ref(false)
-const cores = window.navigator.hardwareConcurrency ?? 1
-
-export function useTranslator(initialGenerationParams?: MarianGeneration) {
+export const useTranslatorStore = defineStore('translator', () => {
+  const fileProgressDetails = ref(new Map<string, DownloadStatus>())
+  const activeWorkersPool: Array<{
+    workerId: string
+    worker: Worker | undefined
+    status: 'free' | 'working' | 'disposed'
+    initial: boolean
+  }> = []
+  const isLoaded = ref(false)
+  const cores = window.navigator.hardwareConcurrency ?? 1
   const smartTextSplitter = new SmartTextSplitter()
   const maxConcurrentWorkers = ref(Math.max(1, cores - 1))
-  const sentenceQueue: SentenceEntry[] = []
+  const sentenceQueue: Ref<SentenceEntry[]> = ref([])
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
-  const generationParams = ref(
-    initialGenerationParams ?? {
-      max_length: 512,
-      num_beams: 5,
-      early_stopping: true,
-    },
-  )
+  const generationParams = ref({
+    max_length: 512,
+    num_beams: 5,
+    early_stopping: true,
+  })
 
   const checkIfAllDone = () => {
-    const queueEmpty = sentenceQueue.length === 0
+    const queueEmpty = sentenceQueue.value.length === 0
     const allFree = activeWorkersPool.every((worker) => worker.status !== 'working')
     if (queueEmpty && allFree) {
       activeWorkersPool.forEach((worker) => {
-        if (!worker.worker) return
+        if (!worker.worker || worker.initial) return
         worker.worker.postMessage('dispose')
         worker.status = 'disposed'
         console.log('disposing:', worker.workerId)
@@ -52,16 +45,16 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
   }
 
   const processSentenceQueue = () => {
-    if (sentenceQueue.length <= 0) {
+    if (sentenceQueue.value.length <= 0) {
       checkIfAllDone()
       return
     }
 
-    const translating = sentenceQueue[0]
+    const translating = sentenceQueue.value[0]
 
     if (!translating.shouldTranslate) {
       translatedSentences.value.splice(translating.index, 1, translating.text)
-      sentenceQueue.splice(0, 1)
+      sentenceQueue.value.splice(0, 1)
       processSentenceQueue()
       return
     }
@@ -75,7 +68,7 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
     if (worker.worker === undefined) {
       return
     }
-    sentenceQueue.splice(0, 1)
+    sentenceQueue.value.splice(0, 1)
 
     worker.status = 'working'
     worker.worker.postMessage({
@@ -98,14 +91,24 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
 
     console.log(JSON.stringify(newSentences))
 
-    sentenceQueue.push(...newSentences)
+    sentenceQueue.value.push(...newSentences)
 
     translatedSentences.value = Array.from({ length: newSentences.length }).fill('') as string[]
 
     const activeWorkers = activeWorkersPool.filter((work) => work.status === 'free').length
-    const workersMax = Math.min(maxConcurrentWorkers.value - activeWorkers, sentenceQueue.length)
+    const workersMax = Math.max(
+      Math.min(
+        maxConcurrentWorkers.value - activeWorkers,
+        sentenceQueue.value.filter((sen) => sen.shouldTranslate).length - activeWorkers,
+      ),
+      1,
+    )
 
-    if (sentenceQueue.length === activeWorkers) {
+    console.log('maxCon', maxConcurrentWorkers.value)
+    console.log('active', activeWorkers)
+    console.log('transSent', sentenceQueue.value.filter((sen) => sen.shouldTranslate).length)
+
+    if (sentenceQueue.value.length === activeWorkers) {
       activeWorkersPool.forEach((worker) => {
         if (worker.worker && worker.status === 'free') processSentenceQueue()
       })
@@ -118,44 +121,34 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
     }
   }
 
-  const attachListeners = (worker: Worker, initialWorker: boolean = false) => {
+  const attachListeners = (worker: Worker) => {
     worker.onmessage = (event: MessageEvent<ModelOutput>) => {
       if (event.data.status === 'ready') {
         const workerId = nanoid()
-        activeWorkersPool.push({ workerId, worker, status: 'free' })
-        if (!initialWorker) processSentenceQueue()
+        activeWorkersPool.push({ workerId, worker, status: 'free', initial: false })
+        processSentenceQueue()
       } else if (event.data.status === 'result') {
-        // console.log(event.data)
+        console.log(event.data)
         // translatedSentences.value[event.data.index] = event.data.result
         translatedSentences.value.splice(event.data.index, 1, event.data.result)
         const workerId = event.data.workerId
         const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
         activeWorkersPool[currWorker].status = 'free'
-        if (!initialWorker) processSentenceQueue()
+        processSentenceQueue()
       } else if (event.data.status === 'update') {
-        // console.log(event.data)
+        console.log(event.data)
         const originalText = translatedSentences.value[event.data.index] ?? ''
         translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
       }
     }
   }
 
-  const total = computed(() =>
-    Array.from(fileProgressDetails.value.values()).reduce((sum, { total }) => sum + total, 0),
-  )
-
-  const loaded = computed(() =>
-    Array.from(fileProgressDetails.value.values()).reduce((sum, { loaded }) => sum + loaded, 0),
-  )
-
-  // Function to trigger the download and caching of the model
-
   const download = async () => {
     const worker = new Worker()
     worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
       if (event.data.status !== 'downloading') {
         worker.onmessage = null
-        attachListeners(worker, true)
+        attachListeners(worker)
         return
       }
       if (event.data.result.status === 'initiate') {
@@ -173,29 +166,25 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
         })
       } else if (event.data.result.status === 'ready') {
         const workerId = nanoid()
-        activeWorkersPool.push({ workerId, worker, status: 'free' })
+        activeWorkersPool.push({ workerId, worker, status: 'free', initial: true })
         isLoaded.value = true
       }
     }
   }
 
-  const outputText = ref('Translated french will be show up here')
+  const total = computed(() =>
+    Array.from(fileProgressDetails.value.values()).reduce((sum, { total }) => sum + total, 0),
+  )
 
-  watch(outputText, (val) => {
-    console.log('outputText changed:', val)
+  const loaded = computed(() =>
+    Array.from(fileProgressDetails.value.values()).reduce((sum, { loaded }) => sum + loaded, 0),
+  )
+
+  const outputText = computed(() => {
+    return translatedSentences.value.join('')
   })
 
-  watch(
-    translatedSentences,
-    (val) => {
-      if (val.length === 1) {
-        outputText.value = val[0]
-      } else {
-        outputText.value = val.join('')
-      }
-    },
-    { deep: true },
-  )
+  download()
 
   return {
     cores,
@@ -213,4 +202,4 @@ export function useTranslator(initialGenerationParams?: MarianGeneration) {
     generationParams,
     maxConcurrentWorkers,
   }
-}
+})

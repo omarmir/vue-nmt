@@ -8,32 +8,31 @@
     >
       <template #label> English </template>
     </TextArea>
-    <PrimaryButton class="w-full" @click="translateText" :disabled="isTranslating || !isLoaded">
+    <PrimaryButton
+      class="w-full"
+      @click="translateText"
+      :disabled="store.isTranslating || !store.isLoaded"
+    >
       Translate
     </PrimaryButton>
     <GenerationConfig
-      v-model="generationParams"
-      v-model:threads="maxConcurrentWorkers"
+      v-model="store.generationParams"
+      v-model:threads="store.maxConcurrentWorkers"
     ></GenerationConfig>
     <div>
-      {{ outputText }}
+      {{ store.outputText }}
     </div>
   </div>
 </template>
 <script lang="ts" setup>
 import PrimaryButton from '@/components/Inputs/PrimaryButton.vue'
 import TextArea from '@/components/Inputs/TextArea.vue'
-import { useTranslator } from '@/composables/useTranslator'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import GenerationConfig from './GenerationConfig.vue'
-const { translate, outputText, isTranslating, isLoaded, generationParams, maxConcurrentWorkers } =
-  useTranslator()
+import { useTranslatorStore } from '@/stores/translator'
+const store = useTranslatorStore()
 
 const english = ref(`Hello`)
 
-const translateText = () => translate(english.value)
-
-watch(outputText, (val) => {
-  console.log('Watched outputText in component:', val)
-})
+const translateText = () => store.translate(english.value)
 </script>
