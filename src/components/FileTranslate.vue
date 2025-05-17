@@ -13,6 +13,10 @@
     >
       Translate
     </PrimaryButton>
+    <GenerationConfig
+      v-model="store.generationParams"
+      v-model:threads="store.maxConcurrentWorkers"
+    ></GenerationConfig>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
     <ProgressBar
       v-if="store.isTranslating"
@@ -29,6 +33,7 @@ import FilePicker from './Inputs/FilePicker.vue'
 import { useTranslatorStore } from '@/stores/translator'
 import PrimaryButton from '@/components/Inputs/PrimaryButton.vue'
 import LoadingTranslation from './LoadingTranslation.vue'
+import GenerationConfig from './GenerationConfig.vue'
 import ProgressBar from './Inputs/ProgressBar.vue'
 
 const store = useTranslatorStore()

@@ -44,10 +44,10 @@
         </TabList>
 
         <TabPanels class="mt-2">
-          <TabPanel>
+          <TabPanel :unmount="false">
             <TextTranslate></TextTranslate>
           </TabPanel>
-          <TabPanel>
+          <TabPanel :unmount="false">
             <FileTranslate></FileTranslate>
           </TabPanel>
         </TabPanels>
