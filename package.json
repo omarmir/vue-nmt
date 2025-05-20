@@ -13,7 +13,8 @@
     "lint:eslint": "eslint . --fix",
     "lint": "run-s lint:*",
     "format": "prettier --write src/",
-    "netlify-deploy": "netlify deploy --dir=dist"
+    "netlify-deploy": "netlify deploy --dir=dist",
+    "netlify-deploy-prod": "netlify deploy --dir=dist --prod"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
