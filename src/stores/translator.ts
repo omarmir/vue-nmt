@@ -38,6 +38,9 @@ export const useTranslatorStore = defineStore('translator', () => {
     mimeType: string
   } | null = null
 
+  const executionTime = ref(0)
+  let translationStartTime = 0
+
   const checkIfAllDone = () => {
     const queueEmpty = sentenceQueue.value.length === 0
     const allFree = activeWorkersPool.every((worker) => worker.status !== 'working')
@@ -60,8 +63,18 @@ export const useTranslatorStore = defineStore('translator', () => {
         reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
       }
 
+      if (translationStartTime > 0) {
+        executionTime.value = Date.now() - translationStartTime
+        translationStartTime = 0 // Reset for next translation
+      }
+
       currentDocContext = null
     }
+  }
+
+  const startTimer = () => {
+    translationStartTime = Date.now()
+    executionTime.value = 0
   }
 
   const processSentenceQueue = () => {
@@ -135,6 +148,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     }
 
     isTranslating.value = true
+    startTimer()
 
     const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
 
@@ -216,6 +230,8 @@ export const useTranslatorStore = defineStore('translator', () => {
     currentTranslation.value = 'doc'
 
     isTranslating.value = true
+    startTimer()
+
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
 
@@ -261,5 +277,6 @@ export const useTranslatorStore = defineStore('translator', () => {
     state,
     translateDocument,
     currentTranslation,
+    executionTime,
   }
 })

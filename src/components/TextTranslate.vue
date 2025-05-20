@@ -17,7 +17,11 @@
     </PrimaryButton>
     <GenerationConfig></GenerationConfig>
     <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
-    <div class="flex flex-row place-content-end">
+    <div class="flex flex-row justify-between items-center">
+      <div class="italic" v-if="!store.isTranslating && store.currentTranslation === 'txt'">
+        Execution time:
+        <span class="font-bold">~{{ (store.executionTime / 1000).toFixed(2) }}</span> seconds
+      </div>
       <PrimaryButton
         theme="success"
         v-if="!store.isTranslating && isSupported && store.currentTranslation === 'txt'"
