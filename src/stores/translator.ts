@@ -73,7 +73,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     const translating = sentenceQueue.value[0]
 
     if (!translating.shouldTranslate) {
-      translatedSentences.value.splice(translating.index, 1, translating.text)
+      translatedSentences.value[translating.index] = translating.text
       sentenceQueue.value.splice(0, 1)
       processSentenceQueue()
       return
@@ -153,8 +153,8 @@ export const useTranslatorStore = defineStore('translator', () => {
         processSentenceQueue()
       } else if (event.data.status === 'result') {
         // console.log(event.data)
-        // translatedSentences.value[event.data.index] = event.data.result
-        translatedSentences.value.splice(event.data.index, 1, event.data.result)
+        translatedSentences.value[event.data.index] = event.data.result
+        // translatedSentences.value.splice(event.data.index, 1, event.data.result)
         const workerId = event.data.workerId
         const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
         activeWorkersPool[currWorker].status = 'free'
@@ -162,7 +162,9 @@ export const useTranslatorStore = defineStore('translator', () => {
       } else if (event.data.status === 'update') {
         // console.log(event.data)
         const originalText = translatedSentences.value[event.data.index] ?? ''
-        translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
+        translatedSentences.value[event.data.index] = originalText + event.data.result
+
+        // translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
       }
     }
   }
