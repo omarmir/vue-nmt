@@ -33,20 +33,25 @@ if (env.backends.onnx.wasm) {
  */
 
 /**
- * @typedef {TranslateTask | DisposeTask} ModelTask
+ * @typedef {Object} ChangeModelTask
+ * @property {'model'} task
+ * @property {'q8' | 'fp32'} quant
  */
 
-// let translator // <- move this outside so updateCallback can access it
-const translator = await pipeline('translation', 'opus-mt-en-fr', {
-  progress_callback: (data) => self.postMessage({
-    status: "downloading",
-    result: data,
-  }),
-})
+/**
+ * @typedef {TranslateTask | DisposeTask | ChangeModelTask} ModelTask
+ */
 
-self.postMessage({
-  status: 'ready', // this will fire everytime its ready
-})
+// let translator = await pipeline('translation', 'opus-mt-en-fr', {
+//   progress_callback: (data) =>
+//     self.postMessage({
+//       status: 'downloading',
+//       result: data,
+//     }),
+//   dtype: 'q8',
+// })
+
+let translator = null
 
 const updateCallback = (text, index, workerId) => {
   self.postMessage({
@@ -70,6 +75,26 @@ self.addEventListener(
   'message',
   /** @param {MessageEvent<ModelTask>} event */ async (event) => {
     const message = event.data
+
+    if (message.task === 'model') {
+      try {
+        console.log('quant:', message.quant)
+        translator = await pipeline('translation', 'opus-mt-en-fr', {
+          progress_callback: (data) =>
+            self.postMessage({
+              status: 'downloading',
+              result: data,
+            }),
+          dtype: message.quant,
+        })
+        self.postMessage({
+          status: 'ready', // this will fire everytime its ready
+        })
+      } catch (e) {
+        console.log(e)
+        throw e
+      }
+    }
 
     if (message.task === 'dispose') {
       if (translator) translator.dispose()
@@ -107,3 +132,7 @@ self.addEventListener(
     }
   },
 )
+
+self.postMessage({
+  status: 'init',
+})

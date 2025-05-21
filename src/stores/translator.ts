@@ -22,11 +22,12 @@ export const useTranslatorStore = defineStore('translator', () => {
   const sentenceQueue: Ref<SentenceEntry[]> = ref([])
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
-  const state = useStorage('vue-nmt', {
+  const state = useStorage('vue-nmt-config', {
     max_length: 512,
     num_beams: 5,
     early_stopping: true,
     threads: Math.max(1, cores - 2),
+    quant: 'fp32',
   })
 
   const currentTranslation: Ref<'doc' | 'txt' | null> = ref(null)
@@ -41,20 +42,25 @@ export const useTranslatorStore = defineStore('translator', () => {
   const executionTime = ref(0)
   let translationStartTime = 0
 
+  const disposeAllWorkers = (disposeInitial: boolean = false) => {
+    activeWorkersPool.forEach((worker) => {
+      if (!worker.worker) return
+      if (worker.initial && !disposeInitial) return
+      worker.worker.postMessage({ task: 'dispose' })
+      worker.status = 'disposed'
+      console.log('disposing:', worker.workerId)
+      worker.worker.onmessage = null
+      worker.worker.terminate()
+      worker.worker = undefined
+      console.log('dispose', worker.workerId)
+    })
+  }
+
   const checkIfAllDone = () => {
     const queueEmpty = sentenceQueue.value.length === 0
     const allFree = activeWorkersPool.every((worker) => worker.status !== 'working')
     if (queueEmpty && allFree) {
-      activeWorkersPool.forEach((worker) => {
-        if (!worker.worker || worker.initial) return
-        worker.worker.postMessage('dispose')
-        worker.status = 'disposed'
-        console.log('disposing:', worker.workerId)
-        worker.worker.onmessage = null
-        worker.worker.terminate()
-        worker.worker = undefined
-        console.log('dispose', worker.workerId)
-      })
+      disposeAllWorkers()
       isTranslating.value = false
       // If we were doing a doc, reconstruct immediately
       if (currentTranslation.value === 'doc' && currentDocContext) {
@@ -127,7 +133,7 @@ export const useTranslatorStore = defineStore('translator', () => {
       1,
     )
 
-    if (sentenceQueue.value.length === activeWorkers) {
+    if (sentenceQueue.value.length === activeWorkers || activeWorkers === workersMax) {
       activeWorkersPool.forEach((worker) => {
         if (worker.worker && worker.status === 'free') processSentenceQueue()
       })
@@ -136,7 +142,16 @@ export const useTranslatorStore = defineStore('translator', () => {
 
     for (let i = 0; i < workersMax; i++) {
       const worker = new Worker()
-      attachListeners(worker)
+
+      worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
+        if (event.data.status === 'init') {
+          attachListeners(worker)
+          worker.postMessage({
+            task: 'model',
+            quant: state.value.quant,
+          })
+        }
+      }
     }
   }
 
@@ -186,6 +201,13 @@ export const useTranslatorStore = defineStore('translator', () => {
   const download = async () => {
     const worker = new Worker()
     worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
+      if (event.data.status === 'init') {
+        worker.postMessage({
+          task: 'model',
+          quant: state.value.quant,
+        })
+        return
+      }
       if (event.data.status !== 'downloading') {
         worker.onmessage = null
         attachListeners(worker)
@@ -211,6 +233,14 @@ export const useTranslatorStore = defineStore('translator', () => {
       }
     }
   }
+
+  watch(
+    () => state.value.quant,
+    () => {
+      disposeAllWorkers(true)
+      download()
+    },
+  )
 
   const total = computed(() =>
     Array.from(fileProgressDetails.value.values()).reduce((sum, { total }) => sum + total, 0),

@@ -44,6 +44,22 @@
                 ></div>
               </label>
             </div>
+            <div class="grid grid-cols-12 items-center">
+              <label
+                for="countries"
+                class="block mb-2 text-sm font-medium text-gray-900 col-span-4"
+              >
+                Quantization
+              </label>
+              <select
+                v-model="store.state.quant"
+                id="countries"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-1 col-span-4 col-start-9"
+              >
+                <option selected value="q8">q8</option>
+                <option value="fp32">fp32</option>
+              </select>
+            </div>
           </div>
         </DisclosurePanel>
       </Disclosure>
