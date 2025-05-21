@@ -5,6 +5,7 @@
     </label>
     <input
       :id="name"
+      accept=".pptx,.docx"
       type="file"
       :name
       :placeholder="helpText"
