@@ -26,7 +26,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     max_length: 512,
     num_beams: 5,
     early_stopping: true,
-    threads: Math.max(1, cores - 2),
+    threads: Math.max(1, +(cores / 2).toFixed(0)),
     quant: 'fp32',
   })
 
