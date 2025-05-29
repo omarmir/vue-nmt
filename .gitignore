@@ -31,3 +31,6 @@ coverage
 
 # Local Netlify folder
 .netlify
+
+# models
+public/models/opus-mt-tc-big-en-fr/onnx
