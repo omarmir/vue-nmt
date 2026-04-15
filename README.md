@@ -1,39 +1,62 @@
 # vue-nmt
 
-This template should help get you started developing with Vue 3 in Vite.
+A browser-based neural machine translation (NMT) application built with **Vue 3 + Vite**.
 
-## Recommended IDE Setup
+This project runs translation directly in the browser using web workers and local model assets. It supports:
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- **Text translation** with configurable generation settings.
+- **Document translation** for DOCX/PPTX-style zipped XML documents.
+- **Progress tracking** for model loading and translation steps.
+- **Parallel translation workers** tuned to available CPU cores.
 
-## Type Support for `.vue` Imports in TS
+## What this project is about
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+`vue-nmt` is designed as a local-first translation UI that combines:
 
-## Customize configuration
+- A Vue frontend for interaction and configuration.
+- A Pinia store to orchestrate translation state and worker pooling.
+- Hugging Face `@huggingface/transformers` running in the browser.
+- Prepackaged model/tokenizer files under `public/models`.
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+The app includes two main workflows:
 
-## Project Setup
+1. **Translate Text**: paste/type English input and get translated output.
+2. **Translate Document**: upload a compatible office document, translate extracted text segments, and reconstruct a downloadable translated file.
+
+## Tech stack
+
+- Vue 3
+- Vite
+- TypeScript
+- Pinia
+- Tailwind CSS
+- Web Workers
+- Hugging Face Transformers.js
+
+## Project setup
 
 ```sh
 pnpm install
 ```
 
-### Compile and Hot-Reload for Development
+### Development
 
 ```sh
 pnpm dev
 ```
 
-### Type-Check, Compile and Minify for Production
+### Type-check and build
 
 ```sh
 pnpm build
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+### Lint
 
 ```sh
 pnpm lint
 ```
+
+## License
+
+This repository is licensed under the **MIT License**. See [LICENSE](./LICENSE) for details.
