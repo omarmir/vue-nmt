@@ -1,42 +1,42 @@
 <template>
-  <div class="flex flex-col w-full gap-4">
+  <div class="flex w-full flex-col gap-4">
     <FilePicker
       v-model="file"
-      help-text="Select a PPTX/DOCX file to translate"
+      :help-text="t.fileHelp"
       name="file-picker"
-      label="File"
-    ></FilePicker>
+      :label="t.selectedFile"
+    />
     <PrimaryButton
       class="w-full"
       @click="translateDoc()"
       :disabled="store.isTranslating || !store.isLoaded"
     >
-      Translate
+      {{ t.startTranslation }}
     </PrimaryButton>
-    <GenerationConfig></GenerationConfig>
-    <LoadingTranslation :is-shown="store.isTranslating"></LoadingTranslation>
-    <ProgressBar
-      v-if="store.isTranslating"
-      :total="store.sentenceQueue.length + store.translatedSentences.length"
-      :loaded="store.translatedSentences.length"
-      :holdback="10"
-      :release="false"
-    ></ProgressBar>
+    <GenerationConfig :locale="locale" />
+    <LoadingTranslation :is-shown="store.isTranslating" />
   </div>
 </template>
 <script setup lang="ts">
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import FilePicker from './Inputs/FilePicker.vue'
 import { useTranslatorStore } from '@/stores/translator'
 import PrimaryButton from '@/components/Inputs/PrimaryButton.vue'
 import LoadingTranslation from './LoadingTranslation.vue'
 import GenerationConfig from './GenerationConfig.vue'
-import ProgressBar from './Inputs/ProgressBar.vue'
+import { messages } from '@/utils/i18n'
+import type { LocaleCode } from '@/types/translation'
+
+const props = defineProps<{
+  locale: LocaleCode
+}>()
 
 const store = useTranslatorStore()
+const t = computed(() => messages[props.locale])
 const file: Ref<File | null> = ref(null)
 
 const translateDoc = () => {
   if (file.value) store.translateDocument(file.value)
+  else store.statusMessage = t.value.noFile
 }
 </script>

@@ -40,7 +40,11 @@ export const extractSentences = async (
   let idx = 0
 
   for (const [path, doc] of Object.entries(docs)) {
-    const nodes = Array.from(doc.querySelectorAll('w\\:t, t'))
+    const nodes = [
+      ...Array.from(doc.getElementsByTagName('w:t')),
+      ...Array.from(doc.getElementsByTagName('a:t')),
+      ...Array.from(doc.getElementsByTagName('t')),
+    ]
 
     for (const node of nodes) {
       const raw = node.textContent || ''
@@ -71,7 +75,7 @@ export const reconstructFile = async (
 ) => {
   // write back translations
   nodeMaps.forEach(({ node, indices }) => {
-    node.textContent = indices.map((i) => translatedSentences[i]).join(' ')
+    node.textContent = indices.map((i) => translatedSentences[i] || '').join('')
   })
 
   // update zip and download

@@ -1,6 +1,7 @@
 export type ModelStatus =
   | {
       status: 'downloading'
+      model?: string
       result:
         | {
             status: 'initiate' | 'download' | 'done'
@@ -39,7 +40,7 @@ export type MarianGeneration = {
 export type ModelOutput =
   | {
       status: 'update' | 'result'
-      result: 'string'
+      result: string
       index: number
       workerId: string
     }
@@ -49,4 +50,10 @@ export type ModelOutput =
     }
   | {
       status: 'ready'
+      model?: string
+    }
+  | {
+      status: 'batch-complete'
+      batchId: string
+      workerId: string
     }

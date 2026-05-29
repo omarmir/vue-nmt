@@ -13,6 +13,8 @@
     "lint:eslint": "eslint . --fix",
     "lint": "run-s lint:*",
     "format": "prettier --write src/",
+    "fetch:models": "node scripts/fetch-models.mjs",
+    "models:fetch": "node scripts/fetch-models.mjs",
     "netlify-deploy": "netlify deploy --dir=dist",
     "netlify-deploy-prod": "netlify deploy --dir=dist --prod"
   },

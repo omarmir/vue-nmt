@@ -1,4 +1,5 @@
 import type { DownloadStatus, ModelOutput, ModelStatus } from '@/types/Transformers'
+import type { GlossarySet, MaskedGlossaryText, TranslationDirection } from '@/types/translation'
 import { computed, ref, watch, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
@@ -7,27 +8,51 @@ import { defineStore } from 'pinia'
 import JSZip from 'jszip'
 import { extractSentences, loadXmlDocs, reconstructFile, type NodeMaps } from '@/utils/document'
 import { useStorage } from '@vueuse/core'
+import {
+  activeEntriesForDirection,
+  getSelectedGlossarySetId,
+  listGlossarySets,
+  maskTextWithGlossary,
+  setSelectedGlossarySetId,
+} from '@/utils/glossary'
+import { recommendWorkerCount, splitQueueIntoBatches } from '@/utils/worker-planning'
+
+type QueueEntry = SentenceEntry & {
+  glossary?: MaskedGlossaryText
+}
+
+type WorkerPoolItem = {
+  workerId: string
+  worker: Worker
+  status: 'loading' | 'free' | 'working' | 'disposed'
+  initial: boolean
+  model: string
+}
+
+const modelForDirection = (direction: TranslationDirection) =>
+  direction === 'fr-en' ? 'opus-mt-fr-en' : 'opus-mt-en-fr'
 
 export const useTranslatorStore = defineStore('translator', () => {
-  const fileProgressDetails = ref(new Map<string, DownloadStatus>())
-  const activeWorkersPool: Array<{
-    workerId: string
-    worker: Worker | undefined
-    status: 'free' | 'working' | 'disposed'
-    initial: boolean
-  }> = []
+  const fileProgressDetails = ref(new Map<string, DownloadStatus & { model?: string }>())
+  const activeWorkersPool: WorkerPoolItem[] = []
   const isLoaded = ref(false)
+  const activeModel = ref<string | null>(null)
   const cores = window.navigator.hardwareConcurrency ?? 1
+  const deviceMemory = (window.navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null
   const smartTextSplitter = new SmartTextSplitter()
-  const sentenceQueue: Ref<SentenceEntry[]> = ref([])
+  const sentenceQueue: Ref<QueueEntry[]> = ref([])
+  const pendingBatches: Ref<Array<{ id: string; items: QueueEntry[]; weight: number }>> = ref([])
   const translatedSentences: Ref<string[]> = ref([])
   const isTranslating = ref(false)
-  const state = useStorage('vue-nmt-config', {
+  const direction = useStorage<TranslationDirection>('nmt-direction', 'en-fr')
+  const glossarySets: Ref<GlossarySet[]> = ref([])
+  const selectedGlossarySetId = ref(getSelectedGlossarySetId())
+  const statusMessage = ref('')
+  const state = useStorage('nmt-config', {
     max_length: 512,
-    num_beams: 5,
+    num_beams: 4,
     early_stopping: true,
-    threads: Math.max(1, +(cores / 2).toFixed(0)),
-    quant: 'fp32',
+    threads: Math.min(8, Math.max(1, Math.round(cores / 2))),
   })
 
   const currentTranslation: Ref<'doc' | 'txt' | null> = ref(null)
@@ -40,42 +65,41 @@ export const useTranslatorStore = defineStore('translator', () => {
   } | null = null
 
   const executionTime = ref(0)
+  const completedCount = ref(0)
+  const totalSegments = ref(0)
+  const activeWorkerCount = ref(0)
   let translationStartTime = 0
+  let isFinishing = false
 
-  const disposeAllWorkers = (disposeInitial: boolean = false) => {
-    activeWorkersPool.forEach((worker) => {
-      if (!worker.worker) return
-      if (worker.initial && !disposeInitial) return
-      worker.worker.postMessage({ task: 'dispose' })
-      worker.status = 'disposed'
-      console.log('disposing:', worker.workerId)
-      worker.worker.onmessage = null
-      worker.worker.terminate()
-      worker.worker = undefined
-      console.log('dispose', worker.workerId)
-    })
+  const requiredModel = computed(() => modelForDirection(direction.value))
+
+  const disposeWorkers = (includeInitial = false) => {
+    for (const item of activeWorkersPool) {
+      if (item.initial && !includeInitial) continue
+      if (item.status === 'disposed') continue
+      item.status = 'disposed'
+      item.worker.postMessage({ task: 'dispose' })
+      item.worker.onmessage = null
+      item.worker.terminate()
+    }
+
+    for (let index = activeWorkersPool.length - 1; index >= 0; index--) {
+      if (activeWorkersPool[index].status === 'disposed') activeWorkersPool.splice(index, 1)
+    }
   }
 
-  const checkIfAllDone = () => {
-    const queueEmpty = sentenceQueue.value.length === 0
-    const allFree = activeWorkersPool.every((worker) => worker.status !== 'working')
-    if (queueEmpty && allFree) {
-      disposeAllWorkers()
-      isTranslating.value = false
-      // If we were doing a doc, reconstruct immediately
-      if (currentTranslation.value === 'doc' && currentDocContext) {
-        const { nodeMaps, docs, zip, fileName, mimeType } = currentDocContext
-        // reconstructFile updates zip and triggers download
-        reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
-      }
-
-      if (translationStartTime > 0) {
-        executionTime.value = Date.now() - translationStartTime
-        translationStartTime = 0 // Reset for next translation
-      }
-
-      currentDocContext = null
-    }
+  const resetTranslationState = () => {
+    sentenceQueue.value = []
+    pendingBatches.value = []
+    translatedSentences.value = []
+    completedCount.value = 0
+    totalSegments.value = 0
+    activeWorkerCount.value = 0
+    currentDocContext = null
+    isFinishing = false
+    translationStartTime = 0
+    executionTime.value = 0
+    isTranslating.value = false
   }
 
   const startTimer = () => {
@@ -83,164 +107,275 @@ export const useTranslatorStore = defineStore('translator', () => {
     executionTime.value = 0
   }
 
-  const processSentenceQueue = () => {
-    if (sentenceQueue.value.length <= 0) {
-      checkIfAllDone()
-      return
+  const finishTranslation = async () => {
+    if (isFinishing) return
+    isFinishing = true
+    isTranslating.value = false
+    disposeWorkers(false)
+
+    if (currentTranslation.value === 'doc' && currentDocContext) {
+      const { nodeMaps, docs, zip, fileName, mimeType } = currentDocContext
+      await reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
     }
 
-    const translating = sentenceQueue.value[0]
-
-    if (!translating.shouldTranslate) {
-      translatedSentences.value[translating.index] = translating.text
-      sentenceQueue.value.splice(0, 1)
-      processSentenceQueue()
-      return
+    if (translationStartTime > 0) {
+      executionTime.value = Date.now() - translationStartTime
+      translationStartTime = 0
     }
 
-    const currWorker = activeWorkersPool.findIndex((worker) => worker.status === 'free')
-    if (currWorker === -1) {
-      return // No free worker yet, wait for one to become free - this should happen when the next one becomes free
-    }
+    currentDocContext = null
+    isFinishing = false
+  }
 
-    const worker = activeWorkersPool[currWorker]
-    if (worker.worker === undefined) {
-      return
-    }
-    sentenceQueue.value.splice(0, 1)
-
-    worker.status = 'working'
-    worker.worker.postMessage({
-      task: 'translate',
-      input: translating.text,
-      generation: {
-        max_length: state.value.max_length,
-        early_stopping: state.value.early_stopping,
-        num_beams: state.value.num_beams,
-      },
-      index: translating.index,
-      workerId: activeWorkersPool[currWorker].workerId,
+  const checkIfAllDone = () => {
+    if (!isTranslating.value || isFinishing) return
+    const allIdle = activeWorkersPool.every((worker) => worker.status !== 'working' && worker.status !== 'loading')
+    if (pendingBatches.value.length > 0 || !allIdle) return
+    finishTranslation().catch((error) => {
+      statusMessage.value = error?.message || String(error)
+      isTranslating.value = false
+      isFinishing = false
+      disposeWorkers(false)
     })
   }
 
-  const spawnWorkers = () => {
-    const activeWorkers = activeWorkersPool.filter((work) => work.status === 'free').length
-    const workersMax = Math.max(
-      Math.min(
-        state.value.threads - activeWorkers,
-        sentenceQueue.value.filter((sen) => sen.shouldTranslate).length - activeWorkers,
-      ),
-      1,
-    )
+  const processQueue = () => {
+    if (!isTranslating.value) return
 
-    if (sentenceQueue.value.length === activeWorkers || activeWorkers === workersMax) {
-      activeWorkersPool.forEach((worker) => {
-        if (worker.worker && worker.status === 'free') processSentenceQueue()
+    while (pendingBatches.value.length > 0) {
+      const worker = activeWorkersPool.find(
+        (item) => item.status === 'free' && item.model === requiredModel.value,
+      )
+      if (!worker) break
+
+      const batch = pendingBatches.value.shift()
+      if (!batch) break
+      worker.status = 'working'
+      worker.worker.postMessage({
+        task: 'translate-batch',
+        batchId: batch.id,
+        model: worker.model,
+        workerId: worker.workerId,
+        items: batch.items,
+        generation: {
+          max_length: state.value.max_length,
+          early_stopping: state.value.early_stopping,
+          num_beams: state.value.num_beams,
+        },
       })
+    }
+
+    checkIfAllDone()
+  }
+
+  const attachListeners = (poolItem: WorkerPoolItem) => {
+    poolItem.worker.onmessage = (event: MessageEvent<ModelOutput | ModelStatus>) => {
+      if (event.data.status === 'init') {
+        poolItem.worker.postMessage({
+          task: 'model',
+          model: poolItem.model,
+        })
+        return
+      }
+
+      if (event.data.status === 'downloading') {
+        const result = event.data.result
+        if (!('file' in result)) return
+        const key = `${poolItem.model}/${result.file}`
+        const existing = fileProgressDetails.value.get(key) || { loaded: 0, total: 0, model: poolItem.model }
+        if (result.status === 'initiate') {
+          fileProgressDetails.value.set(key, existing)
+        } else if (result.status === 'progress') {
+          fileProgressDetails.value.set(key, {
+            loaded: Math.max(existing.loaded, result.loaded || 0),
+            total: Math.max(existing.total, result.total || 0),
+            model: poolItem.model,
+          })
+        } else if (result.status === 'done') {
+          fileProgressDetails.value.set(key, {
+            loaded: existing.total || existing.loaded || 1,
+            total: existing.total || existing.loaded || 1,
+            model: poolItem.model,
+          })
+        }
+        return
+      }
+
+      if (event.data.status === 'ready') {
+        poolItem.status = 'free'
+        activeModel.value = 'model' in event.data && event.data.model ? event.data.model : poolItem.model
+        isLoaded.value = activeModel.value === requiredModel.value
+        processQueue()
+        return
+      }
+
+      if (event.data.status === 'result') {
+        translatedSentences.value[event.data.index] = event.data.result
+        completedCount.value += 1
+        return
+      }
+
+      if (event.data.status === 'batch-complete') {
+        poolItem.status = 'free'
+        processQueue()
+        return
+      }
+
+      if (event.data.status === 'error') {
+        poolItem.status = 'free'
+        statusMessage.value = event.data.error
+        isTranslating.value = false
+        disposeWorkers(false)
+      }
+    }
+  }
+
+  const createWorker = (initial = false) => {
+    const worker = new Worker()
+    const poolItem: WorkerPoolItem = {
+      workerId: nanoid(),
+      worker,
+      status: 'loading',
+      initial,
+      model: requiredModel.value,
+    }
+    activeWorkersPool.push(poolItem)
+    attachListeners(poolItem)
+    return poolItem
+  }
+
+  const ensureModel = async () => {
+    if (activeModel.value && activeModel.value !== requiredModel.value) {
+      disposeWorkers(true)
+      activeModel.value = null
+      isLoaded.value = false
+      fileProgressDetails.value.clear()
+    }
+
+    if (
+      isLoaded.value &&
+      activeWorkersPool.some((worker) => worker.status === 'free' && worker.model === requiredModel.value)
+    ) {
       return
     }
 
-    for (let i = 0; i < workersMax; i++) {
-      const worker = new Worker()
+    if (!activeWorkersPool.some((worker) => worker.status === 'loading' || worker.status === 'free')) {
+      createWorker(true)
+    }
+  }
 
-      worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
-        if (event.data.status === 'init') {
-          attachListeners(worker)
-          worker.postMessage({
-            task: 'model',
-            quant: state.value.quant,
-          })
-        }
+  const desiredWorkerCount = (queue = sentenceQueue.value) => {
+    const translatable = queue.filter((item) => item.shouldTranslate).length
+    return recommendWorkerCount({
+      segmentCount: translatable,
+      maxWorkers: state.value.threads,
+      hardwareConcurrency: cores,
+      deviceMemory,
+    })
+  }
+
+  const ensureTranslationWorkers = (needed = desiredWorkerCount()) => {
+    const active = activeWorkersPool.filter((worker) => worker.status !== 'disposed').length
+    for (let index = active; index < needed; index++) createWorker(false)
+    activeWorkerCount.value = needed
+  }
+
+  const refreshGlossarySets = async () => {
+    glossarySets.value = await listGlossarySets()
+    if (
+      selectedGlossarySetId.value &&
+      !glossarySets.value.some((set) => set.id === selectedGlossarySetId.value)
+    ) {
+      selectedGlossarySetId.value = ''
+      setSelectedGlossarySetId('')
+    }
+  }
+
+  const setSelectedGlossary = (id: string) => {
+    selectedGlossarySetId.value = id
+    setSelectedGlossarySetId(id)
+  }
+
+  const applyGlossaryToQueue = async (queue: SentenceEntry[]): Promise<QueueEntry[]> => {
+    await refreshGlossarySets()
+    const set = glossarySets.value.find((item) => item.id === selectedGlossarySetId.value)
+    const active = activeEntriesForDirection(set?.entries || [], direction.value)
+    if (!active.length) return queue.map((item) => ({ ...item }))
+
+    return queue.map((item) => {
+      if (!item.shouldTranslate) return { ...item }
+      const masked = maskTextWithGlossary(item.text, active)
+      return masked ? { ...item, glossary: masked } : { ...item }
+    })
+  }
+
+  const startQueue = async (queue: SentenceEntry[], mode: 'txt' | 'doc') => {
+    const preparedQueue = await applyGlossaryToQueue(queue)
+    if (!preparedQueue.some((item) => item.shouldTranslate)) return
+
+    await ensureModel()
+    currentTranslation.value = mode
+    sentenceQueue.value = preparedQueue
+    translatedSentences.value = []
+    completedCount.value = 0
+    totalSegments.value = preparedQueue.length
+
+    for (const item of preparedQueue) {
+      if (!item.shouldTranslate) {
+        translatedSentences.value[item.index] = item.text
+        completedCount.value += 1
       }
     }
+
+    const translatable = preparedQueue.filter((item) => item.shouldTranslate)
+    const workerCount = desiredWorkerCount(preparedQueue)
+    pendingBatches.value = splitQueueIntoBatches(translatable, workerCount)
+    activeWorkerCount.value = workerCount
+    isTranslating.value = true
+    statusMessage.value = ''
+    startTimer()
+    ensureTranslationWorkers(workerCount)
+    processQueue()
   }
 
   const translate = async (input: string) => {
-    currentTranslation.value = 'txt'
+    if (input.trim() === '') return
+    const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
+    await startQueue(newSentences, 'txt')
+  }
 
-    if (input.trim() === '') {
+  const translateDocument = async (file: File) => {
+    if (!/\.(docx|pptx)$/i.test(file.name)) {
+      statusMessage.value = 'Only DOCX and PPTX files are supported.'
       return
     }
 
-    isTranslating.value = true
-    startTimer()
+    const arrayBuffer = await file.arrayBuffer()
+    const zip = await JSZip.loadAsync(arrayBuffer)
+    const docs = await loadXmlDocs(zip)
+    const { nodeMaps, queue } = await extractSentences(docs, smartTextSplitter)
 
-    const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
-
-    sentenceQueue.value.push(...newSentences)
-
-    translatedSentences.value = []
-
-    spawnWorkers()
-  }
-
-  const attachListeners = (worker: Worker) => {
-    worker.onmessage = (event: MessageEvent<ModelOutput>) => {
-      if (event.data.status === 'ready') {
-        const workerId = nanoid()
-        activeWorkersPool.push({ workerId, worker, status: 'free', initial: false })
-        processSentenceQueue()
-      } else if (event.data.status === 'result') {
-        // console.log(event.data)
-        translatedSentences.value[event.data.index] = event.data.result
-        // translatedSentences.value.splice(event.data.index, 1, event.data.result)
-        const workerId = event.data.workerId
-        const currWorker = activeWorkersPool.findIndex((worker) => worker.workerId === workerId)
-        activeWorkersPool[currWorker].status = 'free'
-        processSentenceQueue()
-      } else if (event.data.status === 'update') {
-        // console.log(event.data)
-        const originalText = translatedSentences.value[event.data.index] ?? ''
-        translatedSentences.value[event.data.index] = originalText + event.data.result
-
-        // translatedSentences.value.splice(event.data.index, 1, originalText + event.data.result)
-      }
+    currentDocContext = {
+      nodeMaps,
+      docs,
+      zip,
+      fileName: file.name,
+      mimeType: file.type,
     }
+
+    await startQueue(queue, 'doc')
   }
 
-  const download = async () => {
-    const worker = new Worker()
-    worker.onmessage = (event: MessageEvent<ModelStatus | ModelOutput>) => {
-      if (event.data.status === 'init') {
-        worker.postMessage({
-          task: 'model',
-          quant: state.value.quant,
-        })
-        return
-      }
-      if (event.data.status !== 'downloading') {
-        worker.onmessage = null
-        attachListeners(worker)
-        return
-      }
-      if (event.data.result.status === 'initiate') {
-        fileProgressDetails.value.set(event.data.result.file, { loaded: 0, total: 0 })
-      } else if (event.data.result.status === 'progress') {
-        fileProgressDetails.value.set(event.data.result.file, {
-          loaded: event.data.result.loaded,
-          total: event.data.result.total,
-        })
-      } else if (event.data.result.status === 'done') {
-        const file = fileProgressDetails.value.get(event.data.result.file)
-        fileProgressDetails.value.set(event.data.result.file, {
-          loaded: file?.loaded ?? 1,
-          total: file?.total ?? 1,
-        })
-      } else if (event.data.result.status === 'ready') {
-        const workerId = nanoid()
-        activeWorkersPool.push({ workerId, worker, status: 'free', initial: true })
-        isLoaded.value = true
-      }
-    }
+  const setDirection = async (nextDirection: TranslationDirection) => {
+    if (direction.value === nextDirection) return
+    resetTranslationState()
+    direction.value = nextDirection
+    disposeWorkers(true)
+    activeModel.value = null
+    isLoaded.value = false
+    fileProgressDetails.value.clear()
+    await ensureModel()
   }
-
-  watch(
-    () => state.value.quant,
-    () => {
-      disposeAllWorkers(true)
-      download()
-    },
-  )
 
   const total = computed(() =>
     Array.from(fileProgressDetails.value.values()).reduce((sum, { total }) => sum + total, 0),
@@ -250,63 +385,53 @@ export const useTranslatorStore = defineStore('translator', () => {
     Array.from(fileProgressDetails.value.values()).reduce((sum, { loaded }) => sum + loaded, 0),
   )
 
+  const outputPlaceholder = computed(() =>
+    direction.value === 'fr-en' ? 'English text will appear here' : 'French text will appear here',
+  )
+
   const outputText = computed(() => {
-    if (currentTranslation.value !== 'txt') return 'French text will appear here'
-    // return 'French text will appear here'
-    return translatedSentences.value.join('')
+    if (currentTranslation.value !== 'txt') return outputPlaceholder.value
+    return translatedSentences.value.join('') || outputPlaceholder.value
   })
 
-  const translateDocument = async (file: File) => {
-    currentTranslation.value = 'doc'
+  const sourceLabel = computed(() => (direction.value === 'fr-en' ? 'French' : 'English'))
+  const outputLabel = computed(() => (direction.value === 'fr-en' ? 'English' : 'French'))
 
-    isTranslating.value = true
-    startTimer()
-
-    const arrayBuffer = await file.arrayBuffer()
-    const zip = await JSZip.loadAsync(arrayBuffer)
-
-    // load & extract
-    const docs = await loadXmlDocs(zip)
-    const { nodeMaps, queue } = await extractSentences(docs, smartTextSplitter)
-    // console.log('que', queue)
-    // console.log('nodemaps', nodeMaps)
-
-    // setup queue and results
-    sentenceQueue.value = queue.slice()
-    translatedSentences.value = []
-
-    spawnWorkers()
-
-    await new Promise<void>((resolve) => {
-      const stop = watch(isTranslating, (val) => {
-        if (!val) {
-          stop()
-          resolve()
-        }
-      })
-    })
-
-    await reconstructFile(nodeMaps, translatedSentences.value, docs, zip, file.name, file.type)
-  }
-
-  download()
+  ensureModel()
+  refreshGlossarySets()
 
   return {
     cores,
-    download,
+    ensureModel,
     translate,
     fileProgressDetails,
     loaded,
     total,
     isLoaded,
+    activeModel,
+    requiredModel,
     outputText,
+    outputPlaceholder,
     translatedSentences,
     isTranslating,
     sentenceQueue,
+    pendingBatches,
     activeWorkersPool,
     state,
     translateDocument,
     currentTranslation,
     executionTime,
+    completedCount,
+    totalSegments,
+    activeWorkerCount,
+    direction,
+    setDirection,
+    sourceLabel,
+    outputLabel,
+    glossarySets,
+    selectedGlossarySetId,
+    setSelectedGlossary,
+    refreshGlossarySets,
+    statusMessage,
   }
 })
