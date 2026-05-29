@@ -2,6 +2,8 @@
 
 A browser-based neural machine translation (NMT) application built with **Vue 3 + Vite**.
 
+**Live site:** [https://omarmir.github.io/vue-nmt/](https://omarmir.github.io/vue-nmt/)
+
 This project runs translation directly in the browser using web workers and local model assets. It supports:
 
 - **Text translation** with configurable generation settings.
