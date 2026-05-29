@@ -1,14 +1,15 @@
-const transformersURL = new URL('/transformers/transformers.min.js?raw', import.meta.url).href
+const appBaseURL = new URL(import.meta.env.BASE_URL, self.location.origin)
+const transformersURL = new URL('transformers/transformers.min.js?raw', appBaseURL).href
 const { pipeline, env } = await import(transformersURL)
 
-env.localModelPath = '/models'
+env.localModelPath = new URL('models/', appBaseURL).href
 env.allowRemoteModels = false
 env.allowLocalModels = true
 env.useBrowserCache = false
 env.useFSCache = false
 
 if (env.backends?.onnx?.wasm) {
-  env.backends.onnx.wasm.wasmPaths = '/transformers/'
+  env.backends.onnx.wasm.wasmPaths = new URL('transformers/', appBaseURL).href
   env.backends.onnx.wasm.proxy = false
   env.backends.onnx.wasm.numThreads = 1
 }
