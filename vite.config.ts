@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  appType: 'mpa',
+  appType: 'spa',
   base: process.env.GITHUB_PAGES === 'true' ? '/vue-nmt/' : '/',
   build: {
     target: 'esnext',

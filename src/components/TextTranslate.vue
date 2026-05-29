@@ -1,6 +1,6 @@
 <template>
   <div class="flex w-full flex-col gap-4">
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="flex flex-col gap-4">
       <TextArea
         name="source"
         :placeholder="sourcePlaceholder"
@@ -11,7 +11,7 @@
       </TextArea>
       <section class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-gray-900">{{ outputHeading }}</h3>
-        <div class="min-h-72 whitespace-pre-wrap rounded-md border border-gray-300 bg-gray-50 p-3">
+        <div class="min-h-40 whitespace-pre-wrap py-2 text-gray-900">
           {{ store.outputText }}
         </div>
       </section>
@@ -38,7 +38,6 @@
     </div>
 
     <GenerationConfig :locale="locale" />
-    <LoadingTranslation :is-shown="store.isTranslating" />
   </div>
 </template>
 <script lang="ts" setup>
@@ -47,7 +46,6 @@ import TextArea from '@/components/Inputs/TextArea.vue'
 import { computed, ref, type Ref } from 'vue'
 import GenerationConfig from './GenerationConfig.vue'
 import { useTranslatorStore } from '@/stores/translator'
-import LoadingTranslation from './LoadingTranslation.vue'
 import { useClipboard } from '@vueuse/core'
 import { messages } from '@/utils/i18n'
 import type { LocaleCode } from '@/types/translation'

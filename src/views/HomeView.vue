@@ -45,6 +45,41 @@
       </div>
     </section>
 
+    <section class="rounded-md border border-gray-200 p-4">
+      <h2 class="text-lg font-semibold">{{ t.progress }}</h2>
+      <p class="text-sm text-gray-700">
+        <span v-if="store.statusMessage" class="text-red-700">{{ store.statusMessage }}</span>
+        <span v-else-if="store.isTranslating">{{ t.translating }}</span>
+        <span v-else-if="store.currentTranslation">{{ t.complete }}</span>
+        <span v-else>{{ t.chooseWorkflow }}</span>
+      </p>
+      <ProgressBar
+        class="mt-3"
+        :total="Math.max(store.totalSegments, 1)"
+        :loaded="store.completedCount"
+        :holdback="0"
+        :release="!store.isTranslating"
+      />
+      <div class="mt-4 grid gap-3 sm:grid-cols-4">
+        <article class="rounded-md bg-gray-50 p-3">
+          <span class="text-xs text-gray-600">{{ t.segments }}</span>
+          <strong class="block text-lg">{{ store.totalSegments }}</strong>
+        </article>
+        <article class="rounded-md bg-gray-50 p-3">
+          <span class="text-xs text-gray-600">{{ t.translated }}</span>
+          <strong class="block text-lg">{{ store.completedCount }}</strong>
+        </article>
+        <article class="rounded-md bg-gray-50 p-3">
+          <span class="text-xs text-gray-600">{{ t.workers }}</span>
+          <strong class="block text-lg">{{ store.activeWorkerCount }}</strong>
+        </article>
+        <article class="rounded-md bg-gray-50 p-3">
+          <span class="text-xs text-gray-600">{{ t.elapsed }}</span>
+          <strong class="block text-lg">{{ (store.executionTime / 1000).toFixed(1) }}s</strong>
+        </article>
+      </div>
+    </section>
+
     <TabGroup>
       <TabList class="flex space-x-1 rounded-md bg-blue-100 p-1">
         <Tab as="template" v-slot="{ selected }" class="cursor-pointer">
@@ -84,41 +119,6 @@
         </TabPanel>
       </TabPanels>
     </TabGroup>
-
-    <section class="rounded-md border border-gray-200 p-4">
-      <h2 class="text-lg font-semibold">{{ t.progress }}</h2>
-      <p class="text-sm text-gray-700">
-        <span v-if="store.statusMessage" class="text-red-700">{{ store.statusMessage }}</span>
-        <span v-else-if="store.isTranslating">{{ t.translating }}</span>
-        <span v-else-if="store.currentTranslation">{{ t.complete }}</span>
-        <span v-else>{{ t.chooseWorkflow }}</span>
-      </p>
-      <ProgressBar
-        class="mt-3"
-        :total="Math.max(store.totalSegments, 1)"
-        :loaded="store.completedCount"
-        :holdback="0"
-        :release="!store.isTranslating"
-      />
-      <div class="mt-4 grid gap-3 sm:grid-cols-4">
-        <article class="rounded-md bg-gray-50 p-3">
-          <span class="text-xs text-gray-600">{{ t.segments }}</span>
-          <strong class="block text-lg">{{ store.totalSegments }}</strong>
-        </article>
-        <article class="rounded-md bg-gray-50 p-3">
-          <span class="text-xs text-gray-600">{{ t.translated }}</span>
-          <strong class="block text-lg">{{ store.completedCount }}</strong>
-        </article>
-        <article class="rounded-md bg-gray-50 p-3">
-          <span class="text-xs text-gray-600">{{ t.workers }}</span>
-          <strong class="block text-lg">{{ store.activeWorkerCount }}</strong>
-        </article>
-        <article class="rounded-md bg-gray-50 p-3">
-          <span class="text-xs text-gray-600">{{ t.elapsed }}</span>
-          <strong class="block text-lg">{{ (store.executionTime / 1000).toFixed(1) }}s</strong>
-        </article>
-      </div>
-    </section>
   </main>
 </template>
 <script setup lang="ts">

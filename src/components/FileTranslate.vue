@@ -13,8 +13,15 @@
     >
       {{ t.startTranslation }}
     </PrimaryButton>
+    <PrimaryButton
+      v-if="!store.isTranslating && store.translatedDocument"
+      class="w-full"
+      theme="success"
+      @click="store.downloadTranslatedDocument()"
+    >
+      {{ t.download }}
+    </PrimaryButton>
     <GenerationConfig :locale="locale" />
-    <LoadingTranslation :is-shown="store.isTranslating" />
   </div>
 </template>
 <script setup lang="ts">
@@ -22,7 +29,6 @@ import { computed, ref, type Ref } from 'vue'
 import FilePicker from './Inputs/FilePicker.vue'
 import { useTranslatorStore } from '@/stores/translator'
 import PrimaryButton from '@/components/Inputs/PrimaryButton.vue'
-import LoadingTranslation from './LoadingTranslation.vue'
 import GenerationConfig from './GenerationConfig.vue'
 import { messages } from '@/utils/i18n'
 import type { LocaleCode } from '@/types/translation'

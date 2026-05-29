@@ -1,6 +1,6 @@
 import type { DownloadStatus, ModelOutput, ModelStatus } from '@/types/Transformers'
 import type { GlossarySet, MaskedGlossaryText, TranslationDirection } from '@/types/translation'
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, toRaw, type Ref } from 'vue'
 import Worker from '../workers/worker.js?worker'
 import { nanoid } from 'nanoid'
 import { SmartTextSplitter, type SentenceEntry } from '@/lib/nlp'
@@ -48,6 +48,7 @@ export const useTranslatorStore = defineStore('translator', () => {
   const glossarySets: Ref<GlossarySet[]> = ref([])
   const selectedGlossarySetId = ref(getSelectedGlossarySetId())
   const statusMessage = ref('')
+  const translatedDocument = ref<{ blob: Blob; name: string } | null>(null)
   const state = useStorage('nmt-config', {
     max_length: 512,
     num_beams: 4,
@@ -96,6 +97,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     totalSegments.value = 0
     activeWorkerCount.value = 0
     currentDocContext = null
+    translatedDocument.value = null
     isFinishing = false
     translationStartTime = 0
     executionTime.value = 0
@@ -115,7 +117,14 @@ export const useTranslatorStore = defineStore('translator', () => {
 
     if (currentTranslation.value === 'doc' && currentDocContext) {
       const { nodeMaps, docs, zip, fileName, mimeType } = currentDocContext
-      await reconstructFile(nodeMaps, translatedSentences.value, docs, zip, fileName, mimeType)
+      translatedDocument.value = await reconstructFile(
+        nodeMaps,
+        translatedSentences.value,
+        docs,
+        zip,
+        fileName,
+        mimeType,
+      )
     }
 
     if (translationStartTime > 0) {
@@ -156,7 +165,7 @@ export const useTranslatorStore = defineStore('translator', () => {
         batchId: batch.id,
         model: worker.model,
         workerId: worker.workerId,
-        items: batch.items,
+        items: batch.items.map(cloneQueueEntryForWorker),
         generation: {
           max_length: state.value.max_length,
           early_stopping: state.value.early_stopping,
@@ -166,6 +175,25 @@ export const useTranslatorStore = defineStore('translator', () => {
     }
 
     checkIfAllDone()
+  }
+
+  const cloneQueueEntryForWorker = (entry: QueueEntry) => {
+    const rawEntry = toRaw(entry)
+    return {
+      index: rawEntry.index,
+      text: rawEntry.text,
+      shouldTranslate: rawEntry.shouldTranslate,
+      glossary: rawEntry.glossary
+        ? {
+            text: rawEntry.glossary.text,
+            replacements: rawEntry.glossary.replacements.map((replacement) => ({
+              id: replacement.id,
+              source: replacement.source,
+              target: replacement.target,
+            })),
+          }
+        : undefined,
+    }
   }
 
   const attachListeners = (poolItem: WorkerPoolItem) => {
@@ -340,6 +368,7 @@ export const useTranslatorStore = defineStore('translator', () => {
 
   const translate = async (input: string) => {
     if (input.trim() === '') return
+    translatedDocument.value = null
     const newSentences = await smartTextSplitter.getSentenceMap(input.trim())
     await startQueue(newSentences, 'txt')
   }
@@ -350,6 +379,7 @@ export const useTranslatorStore = defineStore('translator', () => {
       return
     }
 
+    translatedDocument.value = null
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
     const docs = await loadXmlDocs(zip)
@@ -397,6 +427,18 @@ export const useTranslatorStore = defineStore('translator', () => {
   const sourceLabel = computed(() => (direction.value === 'fr-en' ? 'French' : 'English'))
   const outputLabel = computed(() => (direction.value === 'fr-en' ? 'English' : 'French'))
 
+  const downloadTranslatedDocument = () => {
+    if (!translatedDocument.value) return
+    const url = URL.createObjectURL(translatedDocument.value.blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = translatedDocument.value.name
+    document.body.append(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   ensureModel()
   refreshGlossarySets()
 
@@ -433,5 +475,7 @@ export const useTranslatorStore = defineStore('translator', () => {
     setSelectedGlossary,
     refreshGlossarySets,
     statusMessage,
+    translatedDocument,
+    downloadTranslatedDocument,
   }
 })

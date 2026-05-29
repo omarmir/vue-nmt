@@ -1,6 +1,5 @@
 import type { SentenceEntry } from '@/lib/nlp'
 import { SmartTextSplitter } from '@/lib/nlp'
-import saveAs from 'file-saver'
 import JSZip from 'jszip'
 
 export type NodeMaps = { path: string; node: Element; indices: number[] }
@@ -72,16 +71,19 @@ export const reconstructFile = async (
   zip: JSZip,
   name: string,
   type: string,
-) => {
+): Promise<{ blob: Blob; name: string }> => {
   // write back translations
   nodeMaps.forEach(({ node, indices }) => {
     node.textContent = indices.map((i) => translatedSentences[i] || '').join('')
   })
 
-  // update zip and download
+  // update zip and return a downloadable file payload
   Object.entries(docs).forEach(([path, doc]) => {
     zip.file(path, new XMLSerializer().serializeToString(doc))
   })
   const out = await zip.generateAsync({ type: 'blob', mimeType: type })
-  saveAs(out, name.replace(/(\.docx|\.pptx)$/, '_translated$1'))
+  return {
+    blob: out,
+    name: name.replace(/(\.docx|\.pptx)$/i, '_translated$1'),
+  }
 }
