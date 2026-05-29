@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col max-w-6xl m-auto mt-10 gap-10 px-5">
+  <div class="flex flex-col max-w-6xl m-auto mt-10 gap-10 px-5 pb-16">
     <header class="flex flex-col gap-4 border-b border-gray-200 pb-6">
       <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
